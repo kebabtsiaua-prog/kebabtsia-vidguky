@@ -25,7 +25,7 @@
   --accent:#5288c1; --accent-fg:#ffffff; --accent-soft:#1f3347;
   --bad:#ef5b5f; --bad-soft:#3a2026; --warn:#e6a23c; --warn-soft:#3a2f1a; --good:#4cbf6b; --good-soft:#1c3427;
   --shade:rgba(0,0,0,.6); color-scheme:dark}
-html,body{height:100%}
+html,body{height:100%;margin:0}
 body{padding-top:var(--top-gap);background:var(--bg2);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.35;overflow-wrap:anywhere}
 :root{--top-gap:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px))}
 body::before{content:"";position:fixed;inset:0 0 auto;height:var(--top-gap);z-index:30;background:var(--bg)}
@@ -155,13 +155,58 @@ textarea{width:100%;min-height:84px;border:1px solid var(--line);border-radius:1
 @media (prefers-reduced-motion:reduce){.sheet,.shade,.toast{transition:none}}
 .inp{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;font-size:16px;color:var(--fg);background:var(--bg2)}
 [hidden]{display:none!important}
-/* Laptop / Telegram Desktop full screen: wider column, sections side by side */
-@media (min-width:900px){
-  .app,.nav-in{max-width:1180px}
-  .view{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;padding-inline:20px}
-  .view>.kpis,.view>.empty,.view>.wide{grid-column:1/-1}
-  .fab{right:max(20px,calc(50% - 590px + 20px))}
-  .sheet{max-width:560px}
+/* Laptop / Telegram Desktop (full screen): sidebar with tabs and «+ Скарга», wider content, two columns, dialogs in the centre */
+.brand{display:none}
+@media (min-width:960px){
+  body{font-size:15.5px;line-height:1.45}
+  .app{max-width:none;margin:0;padding-left:252px;padding-bottom:48px}
+  .top{padding:16px 32px;gap:12px}
+  .top h1{font-size:22px}
+  .back{font-size:15px}
+  .view{max-width:1200px;padding:24px 32px 0;gap:16px}
+  .view.narrow{max-width:900px}
+  .cols{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:16px;align-items:start}
+  .col{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .kpis{gap:16px}
+  .kpi{padding:16px 18px;gap:4px;border-radius:14px}
+  .kpi b{font-size:30px}
+  .kpi .k{font-size:14px}
+  .kpi .s{font-size:13px}
+  .sec{border-radius:14px}
+  .sec-h{padding:16px 18px 6px}
+  .sec-note{padding:0 18px 12px}
+  .c{padding:14px 18px;gap:12px}
+  .c .what{-webkit-line-clamp:3}
+  .br,.ins,.pt,.collab{padding-left:18px;padding-right:18px}
+  .br{grid-template-columns:minmax(0,1fr) 120px 32px;padding-block:11px}
+  .day-h{padding:8px 18px 5px}
+  .pt{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,3fr);align-items:center;gap:20px;padding-block:14px}
+  .pt:hover,.c:hover,.ins:hover,.br:hover{background:var(--bg2)}
+  .pt-g{margin-top:0}
+  .pt .chev{display:none}
+  .pt-g b{font-size:17px}
+  .pt-g>span{font-size:12px}
+  .lst{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .lst>.ins:nth-child(odd){border-left:1px solid var(--line)}
+  .lst>.sec-note{grid-column:1/-1}
+  .nav{top:var(--top-gap);bottom:0;right:auto;width:252px;border-top:0;border-right:1px solid var(--line);padding:0 16px}
+  .brand{display:flex;flex-direction:column;gap:2px;padding:22px 8px 18px}
+  .brand b{font-size:18px}
+  .brand span{font-size:13px;color:var(--hint)}
+  .nav-in{display:flex!important;flex-direction:column;gap:4px;max-width:none;margin:72px 0 0}
+  .nav button{flex-direction:row;justify-content:flex-start;gap:12px;padding:11px 12px;font-size:15px;border-radius:10px;color:var(--fg)}
+  .nav button svg{width:20px;height:20px;color:var(--hint)}
+  .nav button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
+  .nav button.on svg{color:var(--accent)}
+  .nav button:not(.on):hover{background:var(--bg2)}
+  .fab{z-index:21;left:16px;right:auto;top:calc(var(--top-gap) + 86px);bottom:auto;width:220px;height:44px;border-radius:10px;justify-content:center;box-shadow:none;font-size:15px}
+  .fab span{font-size:20px}
+  .shade{z-index:40}
+  .sheet{left:50%;right:auto;top:50%;bottom:auto;width:560px;max-width:calc(100vw - 48px);max-height:86vh;margin:0;border-radius:16px;padding-bottom:0;opacity:0;transform:translate(-50%,-47%);transition:transform .18s ease-out,opacity .18s}
+  .sheet.show{opacity:1;transform:translate(-50%,-50%)}
+  .sheet-h{padding:16px 20px 12px}
+  .sheet-b{padding:16px 20px 20px}
+  .toast{left:calc(50% + 126px);bottom:32px}
 }
 
 .inp:focus{outline:2px solid var(--accent);outline-offset:-1px}
@@ -173,7 +218,7 @@ textarea{width:100%;min-height:84px;border:1px solid var(--line);border-radius:1
   <main class="view" id="view"></main>
 </div>
 <button class="fab" id="fab" hidden><span>+</span>Скарга</button>
-<nav class="nav"><div class="nav-in" id="nav"></div></nav>
+<nav class="nav"><div class="brand"><b>Кебабця</b><span>Скарги гостей</span></div><div class="nav-in" id="nav"></div></nav>
 <div class="toast" id="toast" role="status"></div>
 <script>
 (function(){
@@ -301,7 +346,7 @@ function renderHome(){
     '<button class="kpi" data-golist="done"><b class="good-t">'+rate+'%</b><span class="k">вирішено</span><span class="s">'+done+' з '+cur.length+'</span></button></div>';
 
   var oldest=open.slice().sort(function(a,b){return (a.date<b.date?-1:a.date>b.date?1:0)}).slice(0,4);
-  h+='<section class="sec"><div class="sec-h"><h2>Чекають рішення</h2>'+(open.length?'<button class="more" data-golist="open">Усі '+open.length+'</button>':"")+'</div>'+
+  h+='<section class="sec" data-slot="main"><div class="sec-h"><h2>Чекають рішення</h2>'+(open.length?'<button class="more" data-golist="open">Усі '+open.length+'</button>':"")+'</div>'+
     (oldest.length?'<div class="sec-note">Найстаріші зверху. Натисніть, щоб записати рішення.</div>'+oldest.map(function(r){return cRow(r)}).join(""):'<div class="empty">'+(cur.length?"Усі скарги за "+MNOM[5]+" вирішено":"Скарг за "+MNOM[5]+" ще немає. Надішліть скриншот боту або натисніть «+ Скарга».")+'</div>')+'</section>';
 
   if(LOCS.length>1&&(cur.length||prev.length)){
@@ -315,14 +360,14 @@ function renderHome(){
       better.map(function(x){return ins("dn","data-loc",x.l,'<b>'+esc(shortLoc(x.l))+'</b>: '+x.n+' скарг, було '+x.p)}).join("")+
       tw.map(function(x){return ins("up","data-topic",x.t,'Більше скарг на тему <b>«'+esc(x.t)+'»</b>: '+x.n+', було '+x.p)}).join("")+
       (gl.length?'<div class="ins"><span class="ar '+(gDown>gUp?"up":"dn")+'">G</span><span class="tx">Оцінка Google впала у <b>'+gDown+'</b> точках, зросла у <b>'+gUp+'</b></span></div>':"");
-    if(body)h+='<section class="sec"><div class="sec-h"><h2>Що змінилось порівняно з '+MLOC[4]+'</h2></div>'+body+'</section>';
+    if(body)h+='<section class="sec" data-slot="side"><div class="sec-h"><h2>Що змінилось порівняно з '+MLOC[4]+'</h2></div>'+body+'</section>';
   }
 
   if(cur.length){
     var cc=count(cur,function(r){return r.ch});
-    h+='<section class="sec"><div class="sec-h"><h2>Звідки скарги</h2></div>'+bars(Object.keys(cc).map(function(c){return{k:c,n:cc[c]}}).sort(function(a,b){return b.n-a.n}),"data-ch","")+'</section>';
+    h+='<section class="sec" data-slot="side"><div class="sec-h"><h2>Звідки скарги</h2></div>'+bars(Object.keys(cc).map(function(c){return{k:c,n:cc[c]}}).sort(function(a,b){return b.n-a.n}),"data-ch","")+'</section>';
     var th=THEMES.map(function(t){return{k:t,n:cur.filter(function(r){return r.themes.indexOf(t)>=0}).length}}).filter(function(x){return x.n}).sort(function(a,b){return b.n-a.n}).slice(0,6);
-    if(th.length)h+='<section class="sec"><div class="sec-h"><h2>Про що скаржаться</h2></div>'+bars(th,"data-topic","warn")+'</section>';
+    if(th.length)h+='<section class="sec" data-slot="side"><div class="sec-h"><h2>Про що скаржаться</h2></div>'+bars(th,"data-topic","warn")+'</section>';
   }
 
   var pts=LOCS.map(function(l){var mine=cur.filter(function(r){return r.loc===l});return{l:l,n:mine.length,o:mine.filter(isOpen).length,g:gOf(l,5),c:chkOf(l)}}).sort(function(a,b){return b.n-a.n||a.l.localeCompare(b.l)});
@@ -333,7 +378,7 @@ function renderHome(){
       '<span>'+ratioHtml(x.n,x.c)+'скарг від чеків</span>'+
       '<span><b>'+(x.g?f1(x.g.start)+'→'+f1(x.g.end):"—")+'</b>оцінка Google за місяць</span></span></button>'}).join("")+'</section>';
 
-  h+='<section class="sec"><div class="sec-h"><h2>Звіт за '+MNOM[5]+'</h2></div><div class="exp"><div class="small muted">Файл у форматі вашої таблиці звітності: заклад, дата, соцмережа, суть проблеми, рішення, і під кожним закладом підсумок Google і чеків. Бот надішле його вам у чат.</div><button class="btn" data-send="Excel">Excel у чат</button></div></section>';
+  h+='<section class="sec" data-slot="side"><div class="sec-h"><h2>Звіт за '+MNOM[5]+'</h2></div><div class="exp"><div class="small muted">Файл у форматі вашої таблиці звітності: заклад, дата, соцмережа, суть проблеми, рішення, і під кожним закладом підсумок Google і чеків. Бот надішле його вам у чат.</div><button class="btn" data-send="Excel">Excel у чат</button></div></section>';
   view.innerHTML=h;
 }
 
@@ -358,7 +403,7 @@ function renderPage(){
 function renderLocs(){
   var cur=inM(5);
   var rows=LOCS.map(function(l){var mine=cur.filter(function(r){return r.loc===l});return{l:l,n:mine.length,o:mine.filter(isOpen).length,g:gOf(l,5),c:chkOf(l)}}).sort(function(a,b){return b.n-a.n||a.l.localeCompare(b.l)});
-  var h='<section class="sec"><div class="sec-note" style="padding-top:10px">Зверху точки, де найбільше скарг за '+MNOM[5]+'. Натисніть на точку, щоб побачити все про неї.</div>'+rows.map(function(x){
+  var h='<section class="sec lst"><div class="sec-note" style="padding-top:10px">Зверху точки, де найбільше скарг за '+MNOM[5]+'. Натисніть на точку, щоб побачити все про неї.</div>'+rows.map(function(x){
     var bits=[x.n+' скарг'];if(x.o)bits.push('<span class="warn-t">'+x.o+' чекають рішення</span>');if(x.c&&x.n)bits.push(perChecks(x.n,x.c));if(x.g)bits.push('Google '+f1(x.g.end)+gDelta(x.g));
     return '<button class="ins" data-loc="'+esc(x.l)+'" style="align-items:center"><span class="tx"><span>'+esc(x.l)+'</span><br><span class="small muted">'+bits.join(" · ")+'</span></span>'+CHEV+'</button>'}).join("")+'</section>';
   view.innerHTML=h;
@@ -370,18 +415,18 @@ function renderCab(){
   var h='<div class="small muted" style="padding:0 2px">'+esc(l)+'</div>';
   h+='<div class="kpis"><div class="kpi"><b>'+mine.length+'</b><span class="k">скарг</span><span class="s">'+prevTxt(mine.length,prevN)+'</span></div><div class="kpi"><b class="warn-t">'+nO+'</b><span class="k">чекають рішення</span></div>'+
     '<div class="kpi">'+ratioHtml(mine.length,chk).replace("<b>",'<b style="font-size:20px">')+'<span class="k">скарг від чеків</span><span class="s">'+(chk?esc(perChecks(mine.length,chk)||chk.toLocaleString("uk-UA")+" чеків"):"чеки ще не внесені")+'</span></div></div>';
-  h+='<section class="sec"><div class="sec-h"><h2>Скарги за '+MNOM[5]+'</h2></div>'+
+  h+='<section class="sec" data-slot="main"><div class="sec-h"><h2>Скарги за '+MNOM[5]+'</h2></div>'+
     '<div style="padding:6px 14px 10px;display:flex;flex-direction:column;gap:8px"><div class="seg3 in"><button data-cst="all" class="'+(C.st==="all"?"on":"")+'">Усі '+mine.length+'</button><button data-cst="open" class="'+(C.st==="open"?"on":"")+'">Чекають '+nO+'</button><button data-cst="done" class="'+(C.st==="done"?"on":"")+'">Вирішені '+(mine.length-nO)+'</button></div>'+
     (Object.keys(cc).length?'<div class="chips"><button class="chip'+(!C.ch?" on":"")+'" data-cch="">Усі канали</button>'+Object.keys(cc).map(function(c){return '<button class="chip'+(C.ch===c?" on":"")+'" data-cch="'+esc(c)+'">'+esc(c)+' '+cc[c]+'</button>'}).join("")+'</div>':"")+'</div>'+
     (shown.length?byDay(shown,false):'<div class="empty">Скарг немає</div>')+'</section>';
-  h+='<section class="sec"><div class="sec-h"><h2>Google за '+MNOM[5]+'</h2></div>'+(g?'<div class="sec-note">Як унизу кожного закладу у вашій таблиці, рахується автоматично</div><div class="g-grid">'+
+  h+='<section class="sec" data-slot="side"><div class="sec-h"><h2>Google за '+MNOM[5]+'</h2></div>'+(g?'<div class="sec-note">Як унизу кожного закладу у вашій таблиці, рахується автоматично</div><div class="g-grid">'+
     '<div><b>'+esc(g.total)+' <span class="small good-t">+'+esc(g.nw)+'</span></b><span>відгуків усього, нових за місяць</span></div>'+
     '<div><b>'+f1(g.start)+' → '+f1(g.end)+'</b><span>оцінка на початку і в кінці</span></div>'+
     '<div><b class="good-t">'+esc(g.pos)+'</b><span>позитивних</span></div><div><b class="bad-t">'+esc(g.neg)+'</b><span>негативних</span></div></div>':'<div class="sec-note">З\'явиться після того, як Google схвалить доступ до відгуків.</div>')+'</section>';
   var th=THEMES.map(function(t){return{k:t,n:mine.filter(function(r){return r.themes.indexOf(t)>=0}).length}}).filter(function(x){return x.n}).sort(function(a,b){return b.n-a.n});
-  if(th.length)h+='<section class="sec"><div class="sec-h"><h2>Про що скаржаться</h2></div><div style="padding:6px 14px 12px" class="tags">'+th.map(function(x){return '<span class="tag warn">'+esc(x.k)+' · '+x.n+'</span>'}).join("")+'</div></section>';
+  if(th.length)h+='<section class="sec" data-slot="side"><div class="sec-h"><h2>Про що скаржаться</h2></div><div style="padding:6px 14px 12px" class="tags">'+th.map(function(x){return '<span class="tag warn">'+esc(x.k)+' · '+x.n+'</span>'}).join("")+'</div></section>';
   var gl=MK.map(function(_,i){var x=gOf(l,i);return x?x.end:null});
-  h+='<section class="sec"><div class="sec-h"><h2>Динаміка за 6 місяців</h2></div><div style="padding:4px 10px 6px"><div class="small muted" style="padding:0 4px">Скарги</div>'+barChart(MK.map(function(_,i){return countFor(l,i)}),5)+
+  h+='<section class="sec" data-slot="side"><div class="sec-h"><h2>Динаміка за 6 місяців</h2></div><div style="padding:4px 10px 6px"><div class="small muted" style="padding:0 4px">Скарги</div>'+barChart(MK.map(function(_,i){return countFor(l,i)}),5)+
     (gl.filter(function(v){return v!=null}).length>1?'<div class="small muted" style="padding:6px 4px 0">Оцінка Google на кінець місяця</div>'+lineChart(gl,5):"")+'</div></section>';
   view.innerHTML=h;
 }
@@ -600,7 +645,19 @@ function render(){
   fab.innerHTML=S.loc?'<span>+</span>Скарга на точку':'<span>+</span>Скарга';
   if(S.page)renderPage();else if(S.loc)renderCab();else ({home:renderHome,locs:S.loc?renderCab:(LOCS.length===1?function(){S.loc=LOCS[0];renderCab()}:renderLocs),collab:renderCollab})[S.tab]();
   renderNav();
+  view.classList.toggle("narrow",!!S.page||(S.tab==="collab"&&!S.loc));
+  layoutWide();
 }
+// On a wide screen put the main list on the left and the summaries on the right; on a phone keep one column in reading order.
+var WIDE=window.matchMedia("(min-width:960px)");
+function layoutWide(){
+  if(!WIDE.matches)return;
+  var slotted=view.querySelectorAll(":scope>[data-slot]");if(!slotted.length)return;
+  var cols=document.createElement("div");cols.className="cols";cols.innerHTML='<div class="col"></div><div class="col"></div>';
+  view.insertBefore(cols,slotted[0]);
+  slotted.forEach(function(el){cols.children[el.dataset.slot==="main"?0:1].appendChild(el)});
+}
+WIDE.addEventListener("change",function(){if(ME&&D)render()});
 
 // ================= start =================
 function showError(e){
