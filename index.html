@@ -84,6 +84,7 @@ button:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px soli
 .chip .x{margin-left:6px;opacity:.8}
 .empty{padding:22px 14px;text-align:center;color:var(--hint)}
 .g-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border-top:1px solid var(--line)}
+.g-grid.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .g-grid div{background:var(--card);padding:10px 14px;min-width:0}
 .g-grid b{display:block;font-size:19px;font-variant-numeric:tabular-nums}
 .g-grid span{font-size:12.5px;color:var(--hint)}
@@ -217,6 +218,7 @@ function ingest(){
 }
 function numOr(v){return v==null?null:+v}
 function gOf(l,i){return G[l]&&G[l][i]?G[l][i]:null}
+function appOf(l){var id=LOCBY[l]&&LOCBY[l].id;return (D.app||{})[id+"|"+S.mk]||null}
 function chkOf(l){return CHK[l]&&CHK[l][S.mk]!=null?CHK[l][S.mk]:null}
 function countFor(l,i){var id=LOCBY[l]&&LOCBY[l].id;return D.counts[id+"|"+MK[i]]||0}
 function ratioHtml(n,checks){if(!checks)return '<b>—</b>';var p=n/checks*100;return '<b>'+p.toFixed(p<0.1?3:2).replace(".",",")+'%</b>'}
@@ -348,7 +350,7 @@ function renderLocs(){
   var cur=inM(5);
   var rows=LOCS.map(function(l){var mine=cur.filter(function(r){return r.loc===l});return{l:l,n:mine.length,o:mine.filter(isOpen).length,g:gOf(l,5),c:chkOf(l)}}).sort(function(a,b){return b.n-a.n||a.l.localeCompare(b.l)});
   var h='<section class="sec"><div class="sec-note" style="padding-top:10px">Зверху точки, де найбільше скарг за '+MNOM[5]+'. Натисніть на точку, щоб побачити все про неї.</div>'+rows.map(function(x){
-    var bits=[x.n+' скарг'];if(x.o)bits.push('<span class="warn-t">'+x.o+' чекають рішення</span>');if(x.c&&x.n)bits.push(perChecks(x.n,x.c));if(x.g)bits.push('Google '+f1(x.g.end!=null?x.g.end:x.g.start)+gDelta(x.g));
+    var bits=[x.n+' скарг'];if(x.o)bits.push('<span class="warn-t">'+x.o+' чекають рішення</span>');if(x.c&&x.n)bits.push(perChecks(x.n,x.c));if(x.g)bits.push('Google '+f1(x.g.end!=null?x.g.end:x.g.start)+gDelta(x.g));var ap=appOf(x.l);if(ap)bits.push('додаток: '+ap.n+' оцінок'+(ap.neg?', <span class="bad-t">'+ap.neg+' негативних</span>':''));
     return '<button class="ins" data-loc="'+esc(x.l)+'" style="align-items:center"><span class="tx"><span>'+esc(x.l)+'</span><br><span class="small muted">'+bits.join(" · ")+'</span></span>'+CHEV+'</button>'}).join("")+'</section>';
   view.innerHTML=h;
 }
@@ -367,6 +369,11 @@ function renderCab(){
     (g.total!=null?'<div><b>'+esc(g.total)+(g.nw!=null?' <span class="small good-t">+'+esc(g.nw)+'</span>':'')+'</b><span>відгуків усього'+(g.nw!=null?', нових за місяць':'')+'</span></div>':'')+
     (g.end!=null?'<div><b>'+f1(g.start)+' → '+f1(g.end)+'</b><span>оцінка на початку місяця і зараз</span></div>':'<div><b>'+f1(g.start)+'</b><span>оцінка на початку місяця</span></div>')+
     (g.pos!=null?'<div><b class="good-t">'+esc(g.pos)+'</b><span>позитивних</span></div>':'')+(g.neg!=null?'<div><b class="bad-t">'+esc(g.neg)+'</b><span>негативних</span></div>':'')+'</div>':'<div class="sec-note">З\'явиться після першої перевірки Google. Вона проходить раз на день.</div>')+'</section>';
+  var ap=appOf(l);
+  h+='<section class="sec"><div class="sec-h"><h2>Оцінки в додатку за '+MNOM[5]+'</h2></div>'+(ap?'<div class="sec-note">Кожна оцінка після покупки. Негативні (1–3 зірки) потрапляють у скарги автоматично</div><div class="g-grid g3">'+
+    '<div><b>'+ap.n+'</b><span>оцінок за місяць</span></div>'+
+    '<div><b class="'+(ap.neg?'bad-t':'')+'">'+ap.neg+(ap.neg?' <span class="small muted">'+(ap.neg/ap.n*100).toFixed(1).replace(".",",")+'%</span>':'')+'</b><span>негативних</span></div>'+
+    '<div><b>'+f1(ap.sum/ap.n)+'</b><span>середня оцінка</span></div></div>':'<div class="sec-note">З\'явиться, коли бот почне читати групу з оцінками цієї точки.</div>')+'</section>';
   var th=THEMES.map(function(t){return{k:t,n:mine.filter(function(r){return r.themes.indexOf(t)>=0}).length}}).filter(function(x){return x.n}).sort(function(a,b){return b.n-a.n});
   if(th.length)h+='<section class="sec"><div class="sec-h"><h2>Про що скаржаться</h2></div><div style="padding:6px 14px 12px" class="tags">'+th.map(function(x){return '<span class="tag warn">'+esc(x.k)+' · '+x.n+'</span>'}).join("")+'</div></section>';
   var gl=MK.map(function(_,i){var x=gOf(l,i);return x?x.end:null});
