@@ -1,0 +1,8 @@
+# Supabase CLI settings. The real project is chosen by `supabase link` in the GitHub workflow.
+project_id = "kebabtsia-vidguky"
+
+[functions.api]
+verify_jwt = false
+
+[functions.bot]
+verify_jwt = false

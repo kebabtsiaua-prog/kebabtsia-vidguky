@@ -1,0 +1,16 @@
+# The free Supabase plan pauses a project after 7 quiet days. One request a day keeps it awake.
+name: Keep server awake
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          ref="__PROJECT_REF__"
+          [[ "$ref" == __* ]] && { echo "Сервер ще не налаштований"; exit 0; }
+          curl -fsS "https://$ref.supabase.co/functions/v1/api"
