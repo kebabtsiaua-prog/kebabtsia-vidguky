@@ -107,13 +107,22 @@ export async function onGroupMessage(msg: any) {
   if (r.guest || r.phone) lines.push(`👤 ${escH([r.guest, r.phone].filter(Boolean).join(", "))}`);
   if (r.order) lines.push(`🧾 Замовлення ${escH(r.order)}`);
   lines.push("", "Зверніть увагу і зв'яжіться з гостем. Рішення запишіть в апці.");
-  const { data: team } = await db.from("users").select("tg_id").in("role", ["admin", "comms"]).eq("active", true);
-  for (const u of team ?? []) {
+  for (const u of await recipients()) {
     await tg("sendMessage", {
       chat_id: u.tg_id, parse_mode: "HTML", text: lines.join("\n"),
       reply_markup: { inline_keyboard: [[{ text: "📊 Відкрити апку", web_app: { url: APP_URL } }]] },
     }).catch(console.error);
   }
+}
+
+// Who is told about a negative rating: people with notifications switched on; until anyone has, the comms managers
+// Аня and Олена (owner, 2026-10-23) found by name; if they have not joined yet, the admins.
+async function recipients(): Promise<{ tg_id: number }[]> {
+  const { data: users } = await db.from("users").select("tg_id,name,role,notify").eq("active", true);
+  const all = users ?? [];
+  if (all.some((u) => u.notify != null)) return all.filter((u) => u.notify);
+  const comms = all.filter((u) => /^(аня|анна|ганна|олена|оленка)/i.test(u.name.trim()));
+  return comms.length ? comms : all.filter((u) => u.role === "admin");
 }
 
 // The bot was added to or removed from a group, or its rights changed.
