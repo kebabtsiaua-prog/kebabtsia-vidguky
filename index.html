@@ -165,8 +165,11 @@ textarea{width:100%;min-height:84px;border:1px solid var(--line);border-radius:1
   .back{font-size:15px}
   .view{max-width:1200px;padding:24px 32px 0;gap:16px}
   .view.narrow{max-width:900px}
-  .cols{display:grid;grid-template-columns:minmax(0,7fr) minmax(320px,5fr);gap:16px;align-items:start}
+  .cols{display:grid;grid-template-columns:minmax(0,7fr) minmax(320px,5fr);gap:16px;align-items:stretch}
   .col{display:flex;flex-direction:column;gap:16px;min-width:0}
+  .cols.even{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .col>.grow{flex:1}
+  .col.stick{align-self:start;position:sticky;top:calc(var(--top-gap) + 84px)}
   .kpis{gap:16px}
   .kpi{padding:16px 18px;gap:4px;border-radius:14px}
   .kpi b{font-size:30px}
@@ -195,6 +198,7 @@ textarea{width:100%;min-height:84px;border:1px solid var(--line);border-radius:1
   .brand b{font-size:18px}
   .brand span{font-size:13px;color:var(--hint)}
   .nav-in{display:flex!important;flex-direction:column;gap:4px;max-width:none;margin:72px 0 0}
+  .nofab .nav-in{margin-top:0}
   .nav button{flex-direction:row;justify-content:flex-start;gap:12px;padding:11px 12px;font-size:15px;border-radius:10px;color:var(--fg)}
   .nav button svg{width:20px;height:20px;color:var(--hint)}
   .nav button.on{background:var(--accent-soft);color:var(--accent);font-weight:600}
@@ -347,9 +351,9 @@ function renderHome(){
     '<button class="kpi" data-golist="open"><b class="warn-t">'+open.length+'</b><span class="k">чекають рішення</span><span class="s">рішення ще не записане</span></button>'+
     '<button class="kpi" data-golist="done"><b class="good-t">'+rate+'%</b><span class="k">вирішено</span><span class="s">'+done+' з '+cur.length+'</span></button></div>';
 
-  var oldest=open.slice().sort(function(a,b){return (a.date<b.date?-1:a.date>b.date?1:0)}).slice(0,4);
+  var oldest=open.slice().sort(function(a,b){return (a.date<b.date?-1:a.date>b.date?1:0)}).slice(0,12);
   h+='<section class="sec" data-slot="main"><div class="sec-h"><h2>Чекають рішення</h2>'+(open.length?'<button class="more" data-golist="open">Усі '+open.length+'</button>':"")+'</div>'+
-    (oldest.length?'<div class="sec-note">Найстаріші зверху. Натисніть, щоб записати рішення.</div>'+oldest.map(function(r){return cRow(r)}).join(""):'<div class="empty">'+(cur.length?"Усі скарги за "+MNOM[5]+" вирішено":"Скарг за "+MNOM[5]+" ще немає. Надішліть скриншот боту або натисніть «+ Скарга».")+'</div>')+'</section>';
+    (oldest.length?'<div class="sec-note">Найстаріші зверху. Натисніть, щоб записати рішення.</div>'+oldest.map(function(r,i){var c=cRow(r);return i<4?c:c.replace('<button class="c','<button data-extra hidden class="c')}).join(""):'<div class="empty">'+(cur.length?"Усі скарги за "+MNOM[5]+" вирішено":"Скарг за "+MNOM[5]+" ще немає. Надішліть скриншот боту або натисніть «+ Скарга».")+'</div>')+'</section>';
 
   if(LOCS.length>1&&(cur.length||prev.length)){
     var rows=LOCS.map(function(l){var n=cur.filter(function(r){return r.loc===l}).length,p=prev.filter(function(r){return r.loc===l}).length;return{l:l,n:n,p:p,d:n-p}});
@@ -364,12 +368,13 @@ function renderHome(){
       (gl.length?'<div class="ins"><span class="ar '+(gDown>gUp?"up":"dn")+'">G</span><span class="tx">Оцінка Google впала у <b>'+gDown+'</b> точках, зросла у <b>'+gUp+'</b></span></div>':"");
     if(body)h+='<section class="sec" data-slot="side"><div class="sec-h"><h2>Що змінилось порівняно з '+MLOC[4]+'</h2></div>'+body+'</section>';
   }
+  h+='<section class="sec" data-slot="side"><div class="sec-h"><h2>Звіт за '+MNOM[5]+'</h2></div><div class="exp"><div class="small muted">Файл у форматі вашої таблиці звітності: заклад, дата, соцмережа, суть проблеми, рішення, і під кожним закладом підсумок Google і чеків. Бот надішле його вам у чат.</div><button class="btn" data-send="Excel">Excel у чат</button></div></section>';
 
   if(cur.length){
     var cc=count(cur,function(r){return r.ch});
-    h+='<section class="sec" data-slot="side"><div class="sec-h"><h2>Звідки скарги</h2></div>'+bars(Object.keys(cc).map(function(c){return{k:c,n:cc[c]}}).sort(function(a,b){return b.n-a.n}),"data-ch","")+'</section>';
+    h+='<section class="sec" data-slot="l" data-row="b"><div class="sec-h"><h2>Звідки скарги</h2></div>'+bars(Object.keys(cc).map(function(c){return{k:c,n:cc[c]}}).sort(function(a,b){return b.n-a.n}),"data-ch","")+'</section>';
     var th=THEMES.map(function(t){return{k:t,n:cur.filter(function(r){return r.themes.indexOf(t)>=0}).length}}).filter(function(x){return x.n}).sort(function(a,b){return b.n-a.n}).slice(0,6);
-    if(th.length)h+='<section class="sec" data-slot="side"><div class="sec-h"><h2>Про що скаржаться</h2></div>'+bars(th,"data-topic","warn")+'</section>';
+    if(th.length)h+='<section class="sec" data-slot="r" data-row="b"><div class="sec-h"><h2>Про що скаржаться</h2></div>'+bars(th,"data-topic","warn")+'</section>';
   }
 
   var pts=LOCS.map(function(l){var mine=cur.filter(function(r){return r.loc===l});return{l:l,n:mine.length,o:mine.filter(isOpen).length,g:gOf(l,5),c:chkOf(l)}}).sort(function(a,b){return b.n-a.n||a.l.localeCompare(b.l)});
@@ -380,7 +385,6 @@ function renderHome(){
       '<span>'+ratioHtml(x.n,x.c)+'скарг від чеків</span>'+
       '<span><b>'+(x.g?(x.g.end!=null&&x.g.start!=null?f1(x.g.start)+'→'+f1(x.g.end):f1(x.g.end!=null?x.g.end:x.g.start)):"—")+'</b>оцінка Google за місяць</span></span></button>'}).join("")+'</section>';
 
-  h+='<section class="sec" data-slot="side"><div class="sec-h"><h2>Звіт за '+MNOM[5]+'</h2></div><div class="exp"><div class="small muted">Файл у форматі вашої таблиці звітності: заклад, дата, соцмережа, суть проблеми, рішення, і під кожним закладом підсумок Google і чеків. Бот надішле його вам у чат.</div><button class="btn" data-send="Excel">Excel у чат</button></div></section>';
   view.innerHTML=h;
 }
 
@@ -643,22 +647,41 @@ document.getElementById("fab").addEventListener("click",function(){openAdd(S.loc
 
 function render(){
   renderTop();
-  var fab=document.getElementById("fab");fab.hidden=S.tab==="collab"&&!S.loc;
+  var fab=document.getElementById("fab");fab.hidden=S.tab==="collab"&&!S.loc;document.body.classList.toggle("nofab",fab.hidden);
   fab.innerHTML=S.loc?'<span>+</span>Скарга на точку':'<span>+</span>Скарга';
   if(S.page)renderPage();else if(S.loc)renderCab();else ({home:renderHome,locs:S.loc?renderCab:(LOCS.length===1?function(){S.loc=LOCS[0];renderCab()}:renderLocs),collab:renderCollab})[S.tab]();
   renderNav();
   view.classList.toggle("narrow",!!S.page||(S.tab==="collab"&&!S.loc));
   layoutWide();
 }
-// On a wide screen put the main list on the left and the summaries on the right; on a phone keep one column in reading order.
+// On a wide screen sections go into rows of two columns: data-slot main/side (7:5) or l/r (equal), grouped by data-row.
+// Then the columns are balanced so no column ends far above its neighbour. On a phone everything stays one column.
 var WIDE=window.matchMedia("(min-width:880px)");
 function layoutWide(){
   if(!WIDE.matches)return;
-  var slotted=view.querySelectorAll(":scope>[data-slot]");if(!slotted.length)return;
-  var cols=document.createElement("div");cols.className="cols";cols.innerHTML='<div class="col"></div><div class="col"></div>';
-  view.insertBefore(cols,slotted[0]);
-  slotted.forEach(function(el){cols.children[el.dataset.slot==="main"?0:1].appendChild(el)});
+  var slotted=[].slice.call(view.querySelectorAll(":scope>[data-slot]"));
+  var rows={};
+  slotted.forEach(function(el){var k=el.dataset.row||"a";if(!rows[k]){var even=el.dataset.slot==="l"||el.dataset.slot==="r";
+    rows[k]=document.createElement("div");rows[k].className="cols"+(even?" even":"");rows[k].innerHTML='<div class="col"></div><div class="col"></div>';view.insertBefore(rows[k],el)}
+    rows[k].children[el.dataset.slot==="main"||el.dataset.slot==="l"?0:1].appendChild(el)});
+  Object.keys(rows).forEach(function(k){balance(rows[k])});
 }
+function balance(row){
+  var m=row.children[0],s=row.children[1],GAP=16;
+  if(!m.children.length||!s.children.length)return;
+  function H(el){if(el.classList.contains("col")){var t=0;[].forEach.call(el.children,function(c){t+=c.getBoundingClientRect().height+GAP});return t-GAP}return el.getBoundingClientRect().height}
+  if(!row.classList.contains("even")){
+    // show more waiting complaints while the list is shorter than the summaries beside it
+    var extra=[].slice.call(m.querySelectorAll("[data-extra][hidden]"));
+    while(extra.length&&H(m)+H(extra[0])/2<=H(s))extra.shift().hidden=false;
+    // still much shorter: move the last summary under the list
+    while(s.children.length>1){var last=s.lastElementChild,h=H(last)+GAP;if(H(s)-H(m)<=h)break;m.appendChild(last)}
+  }
+  // the shorter column's last card stretches to the common bottom line; a much shorter side column stays in view instead
+  if(H(s)<H(m)&&!row.classList.contains("even")&&H(m)-H(s)>200)s.classList.add("stick");
+  else (H(m)<H(s)?m:s).lastElementChild.classList.add("grow");
+}
+var resizeT,lastW=innerWidth;window.addEventListener("resize",function(){if(innerWidth===lastW)return;lastW=innerWidth;clearTimeout(resizeT);resizeT=setTimeout(function(){if(WIDE.matches&&ME&&D)render()},200)});
 WIDE.addEventListener("change",function(){if(ME&&D)render()});
 
 // ================= start =================
