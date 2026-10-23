@@ -58,3 +58,11 @@ jobs:
           import json,sys
           print('::notice title=Google::'+'%0A'.join(json.load(sys.stdin)))
           " || true
+      - name: Telegram groups
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          curl -sS "https://$PROJECT_REF.supabase.co/functions/v1/bot?chats=1" | python3 -c "
+          import json,sys
+          rows=json.load(sys.stdin)
+          print('::notice title=Groups::'+('%0A'.join(rows) if rows else 'бот ще не доданий у жодну групу'))
+          " || true

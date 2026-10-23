@@ -62,6 +62,17 @@ async function monthData(u: User, month: string) {
   }
   const { data: google } = await db.from("google_monthly").select("*").gte("month", sixFrom).lt("month", to);
   const { data: checks } = await db.from("checks_monthly").select("*").gte("month", from).lt("month", to);
+  // App order ratings per location and month: all of them, and how many were negative (1–3 stars).
+  const { data: rated } = await scope(db.from("app_ratings").select("location_id,rated_on,rating"), u)
+    .gte("rated_on", sixFrom).lt("rated_on", to);
+  const app: Record<string, { n: number; neg: number; sum: number }> = {};
+  for (const r of rated ?? []) {
+    const k = `${r.location_id}|${String(r.rated_on).slice(0, 7)}`;
+    const x = app[k] ??= { n: 0, neg: 0, sum: 0 };
+    x.n++;
+    x.sum += r.rating;
+    if (r.rating <= 3) x.neg++;
+  }
   const { data: staff } = await db.from("users").select("name,role").eq("active", true).in("role", ["admin", "comms"]);
   return {
     month,
@@ -70,6 +81,7 @@ async function monthData(u: User, month: string) {
     counts,
     google: google ?? [],
     checks: checks ?? [],
+    app,
     who: (staff ?? []).map((s) => s.name),
   };
 }

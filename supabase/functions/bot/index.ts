@@ -2,6 +2,7 @@
 // A person sends a screenshot or text → AI fills location, channel and the complaint → buttons to fix and save.
 // GET ?setup=1 (called by the deploy workflow) points the webhook and the menu button at this function.
 import { b64, parseComplaint } from "../_shared/ai.ts";
+import { listChats, onGroupMessage, onMembership } from "../_shared/uployal.ts";
 import {
   activeLocations, APP_URL, bootstrapAdmin, channelsFor, db, getUser, kyivToday, type Location, redeemCode, ROLES,
   savePhoto, tg, tgFile, type User, webhookSecret,
@@ -222,7 +223,7 @@ async function setup(req: Request): Promise<Response> {
   const hook = await tg("setWebhook", {
     url: self,
     secret_token: await webhookSecret(),
-    allowed_updates: ["message", "callback_query"],
+    allowed_updates: ["message", "channel_post", "callback_query", "my_chat_member"],
     drop_pending_updates: false,
   });
   await tg("setChatMenuButton", { menu_button: { type: "web_app", text: "Відгуки", web_app: { url: APP_URL } } });
@@ -233,12 +234,18 @@ async function setup(req: Request): Promise<Response> {
 
 Deno.serve(async (req) => {
   try {
-    if (req.method === "GET") return await setup(req);
+    if (req.method === "GET") {
+      if (new URL(req.url).searchParams.has("chats")) return Response.json(await listChats());
+      return await setup(req);
+    }
     if (req.headers.get("x-telegram-bot-api-secret-token") !== await webhookSecret()) {
       return new Response("forbidden", { status: 403 });
     }
     const update = await req.json();
-    if (update.message) await onMessage(update.message);
+    const post = update.message ?? update.channel_post;
+    if (post && post.chat?.type !== "private") await onGroupMessage(post);
+    else if (update.message) await onMessage(update.message);
+    else if (update.my_chat_member) await onMembership(update.my_chat_member);
     else if (update.callback_query) await onCallback(update.callback_query);
   } catch (e) {
     console.error(e);
