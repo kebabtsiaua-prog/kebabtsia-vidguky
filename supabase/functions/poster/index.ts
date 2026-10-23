@@ -1,4 +1,4 @@
-// Poster POS: number of checks per location per month, for the complaints-to-checks ratio.
+// Poster POS: number of checks (receipts) per location per month, for the complaints-to-checks ratio.
 // Needs POSTER_TOKEN in Supabase secrets (Poster → Доступ → Інтеграції → «Особиста інтеграція»).
 // ?probe=1 shows only the shape of Poster's answers (keys and types, spot names), never figures, because the
 // deploy log of this public repo shows it.
