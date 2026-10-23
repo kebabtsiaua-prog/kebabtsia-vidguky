@@ -80,7 +80,7 @@ export async function onGroupMessage(msg: any) {
   if (r) locId = matchLocation(r.place, locs) ?? locId;
   await db.from("tg_chats").upsert({
     chat_id: chat.id, title: chat.title ?? "", type: chat.type,
-    location_id: known?.location_id ?? (r && locId ? locId : known?.location_id ?? null),
+    location_id: known?.location_id ?? locId,
     messages: (known?.messages ?? 0) + 1, ratings: (known?.ratings ?? 0) + (r ? 1 : 0),
     last_message_at: new Date().toISOString(),
   });
