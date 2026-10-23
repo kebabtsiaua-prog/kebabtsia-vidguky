@@ -127,7 +127,7 @@ export function displayName(u: { first_name?: string; last_name?: string; userna
 // The very first person to open the bot becomes the administrator; everybody after needs a code.
 export async function bootstrapAdmin(from: { id: number; first_name?: string; last_name?: string; username?: string }): Promise<User | null> {
   const { count, error: countError } = await db.from("users").select("tg_id", { count: "exact", head: true });
-  if (countError) throw new Error(`database: ${countError.message}`);
+  if (countError) throw new Error(`database: ${countError.code ?? ""} ${countError.message} ${countError.details ?? ""}`.trim());
   if (count !== 0) return null;
   const row = { tg_id: from.id, name: displayName(from), username: from.username ?? null, role: "admin" };
   const { data, error } = await db.from("users").insert(row).select().single();
