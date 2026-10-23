@@ -53,6 +53,7 @@ jobs:
       - name: Google matches
         if: steps.check.outputs.ready == 'true'
         run: |
+          curl -sS "https://$PROJECT_REF.supabase.co/functions/v1/google" || true
           curl -sS "https://$PROJECT_REF.supabase.co/functions/v1/google?list=1" | python3 -c "
           import json,sys
           print('::notice title=Google::'+'%0A'.join(json.load(sys.stdin)))

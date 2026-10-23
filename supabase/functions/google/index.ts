@@ -6,7 +6,7 @@ import { db, kyivToday, tg } from "../_shared/common.ts";
 const PLACES = "https://places.googleapis.com/v1";
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 
-type Loc = { id: number; name: string; google_place_id: string | null };
+type Loc = { id: number; name: string; google_place_id: string | null; google_query: string | null };
 type Snap = { location_id: number; day: string; rating: number | null; count: number | null };
 
 async function places(key: string, path: string, mask: string, body?: unknown) {
@@ -20,12 +20,14 @@ async function places(key: string, path: string, mask: string, body?: unknown) {
   return data;
 }
 
-// The chain's place for a location, found by name. Only a result named «Кебабця…» counts.
-async function findPlace(key: string, l: Loc) {
+// The chain's place for a location, found by name. Only a result named «Кебабця…» and not taken by another location counts.
+async function findPlace(key: string, l: Loc, taken: Set<string>) {
   const data = await places(key, "places:searchText", "places.id,places.displayName,places.formattedAddress", {
-    textQuery: `Кебабця ${l.name}`, languageCode: "uk", regionCode: "UA",
+    textQuery: l.google_query || `Кебабця ${l.name}`, languageCode: "uk", regionCode: "UA",
   });
-  const p = (data.places ?? []).find((x: { displayName?: { text?: string } }) => /кебаб|kebab/i.test(x.displayName?.text ?? ""));
+  const p = (data.places ?? []).find((x: { id: string; displayName?: { text?: string } }) =>
+    /кебаб|kebab/i.test(x.displayName?.text ?? "") && !taken.has(x.id)
+  );
   if (!p) return null;
   await db.from("locations").update({ google_place_id: p.id, google_address: p.formattedAddress ?? null }).eq("id", l.id);
   return p.id as string;
@@ -116,7 +118,7 @@ Deno.serve(async (req) => {
   if (!key) return json({ ok: false, reason: "GOOGLE_MAPS_API_KEY is not set" });
   const today = kyivToday();
   const month = monthStart(today);
-  const { data } = await db.from("locations").select("id,name,google_place_id").eq("active", true).order("id");
+  const { data } = await db.from("locations").select("id,name,google_place_id,google_query").eq("active", true).order("id");
   const locs = (data ?? []) as Loc[];
   const { data: done } = await db.from("google_daily").select("location_id").eq("day", today);
   const doneIds = new Set((done ?? []).map((d) => d.location_id));
@@ -124,7 +126,9 @@ Deno.serve(async (req) => {
   let taken = 0;
   for (const l of locs.filter((l) => !doneIds.has(l.id))) {
     try {
-      const id = l.google_place_id || await findPlace(key, l);
+      const used = new Set(locs.filter((o) => o.id !== l.id && o.google_place_id).map((o) => o.google_place_id!));
+      const id = l.google_place_id || await findPlace(key, l, used);
+      if (id) l.google_place_id = id;
       if (!id) {
         errors.push(`${l.name}: не знайдено в Google`);
         continue;
