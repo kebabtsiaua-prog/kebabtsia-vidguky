@@ -52,7 +52,8 @@ export async function parseComplaint(
     topics: keywordTopics(input.text ?? ""),
     rating: null,
   };
-  if (!Deno.env.get("ANTHROPIC_API_KEY")) return fallback;
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY")?.trim();
+  if (!apiKey) return fallback;
 
   const content: Anthropic.ContentBlockParam[] = [];
   if (input.image) {
@@ -64,7 +65,7 @@ export async function parseComplaint(
   content.push({ type: "text", text: input.text?.trim() ? `Текст від менеджера:\n${input.text}` : "Розбери скриншот." });
 
   try {
-    const client = new Anthropic();
+    const client = new Anthropic({ apiKey });
     // deno-lint-ignore no-explicit-any
     const params: any = {
       model: "claude-opus-5-5",

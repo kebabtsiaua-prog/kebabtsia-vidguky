@@ -52,7 +52,7 @@ export type User = {
 export type Location = { id: number; name: string; city: string; aliases: string[]; active: boolean };
 
 function botToken(): string {
-  const t = Deno.env.get("TELEGRAM_BOT_TOKEN");
+  const t = Deno.env.get("TELEGRAM_BOT_TOKEN")?.trim();
   if (!t) throw new Error("TELEGRAM_BOT_TOKEN is not set in Supabase secrets");
   return t;
 }
