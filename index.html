@@ -523,7 +523,7 @@ function openInvite(done){
     '<div class="small muted" id="iRoleHint"></div>'+
     '<div class="field" id="iLocF" hidden><div class="lbl">Точка <span class="req">*</span></div><button class="picker empty" id="iLoc"><span class="pv">Вибрати точку</span><span>▾</span></button></div>'+
     '<button class="btn" id="iMake">Створити код</button><div id="iOut"></div>';
-  var HINT={admin:"Бачить усе, видає доступи, вносить чеки.",comms:"Бачить усі точки, вносить скарги, записує рішення.",loc_admin:"Бачить лише свою точку, вносить скарги з Glovo і Bolt.",operator:"Вносить скарги з дзвінків і сайту, бачить лише свої."};
+  var HINT={admin:"Бачить усе, видає доступи, вносить чеки.",comms:"Бачить усі точки, вносить скарги, записує рішення.",loc_admin:"Бачить лише свою точку, вносить скарги з Glovo і Bolt.",operator:"Бачить усі скарги, вносить скарги з дзвінків і сайту."};
   openSheet("Новий доступ",h,function(b){
     function upd(){b.querySelectorAll("#iRole [data-v]").forEach(function(y){y.classList.toggle("on",y.dataset.v===I.role)});b.querySelector("#iLocF").hidden=I.role!=="loc_admin";b.querySelector("#iRoleHint").textContent=HINT[I.role]}
     b.querySelector("#iRole").addEventListener("click",function(e){var x=e.target.closest("[data-v]");if(x){I.role=x.dataset.v;upd()}});
