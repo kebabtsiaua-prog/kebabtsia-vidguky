@@ -157,7 +157,7 @@ textarea{width:100%;min-height:84px;border:1px solid var(--line);border-radius:1
 [hidden]{display:none!important}
 /* Laptop / Telegram Desktop (full screen): sidebar with tabs and «+ Скарга», wider content, two columns, dialogs in the centre */
 .brand{display:none}
-@media (min-width:960px){
+@media (min-width:880px){
   body{font-size:15.5px;line-height:1.45}
   .app{max-width:none;margin:0;padding-left:252px;padding-bottom:48px}
   .top{padding:16px 32px;gap:12px}
@@ -165,7 +165,7 @@ textarea{width:100%;min-height:84px;border:1px solid var(--line);border-radius:1
   .back{font-size:15px}
   .view{max-width:1200px;padding:24px 32px 0;gap:16px}
   .view.narrow{max-width:900px}
-  .cols{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:16px;align-items:start}
+  .cols{display:grid;grid-template-columns:minmax(0,7fr) minmax(320px,5fr);gap:16px;align-items:start}
   .col{display:flex;flex-direction:column;gap:16px;min-width:0}
   .kpis{gap:16px}
   .kpi{padding:16px 18px;gap:4px;border-radius:14px}
@@ -178,7 +178,8 @@ textarea{width:100%;min-height:84px;border:1px solid var(--line);border-radius:1
   .c{padding:14px 18px;gap:12px}
   .c .what{-webkit-line-clamp:3}
   .br,.ins,.pt,.collab{padding-left:18px;padding-right:18px}
-  .br{grid-template-columns:minmax(0,1fr) 120px 32px;padding-block:11px}
+  .br{grid-template-columns:minmax(0,1fr) minmax(60px,120px) 32px;padding-block:11px}
+  .br .n{overflow-wrap:normal}
   .day-h{padding:8px 18px 5px}
   .pt{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,3fr);align-items:center;gap:20px;padding-block:14px}
   .pt:hover,.c:hover,.ins:hover,.br:hover{background:var(--bg2)}
@@ -650,7 +651,7 @@ function render(){
   layoutWide();
 }
 // On a wide screen put the main list on the left and the summaries on the right; on a phone keep one column in reading order.
-var WIDE=window.matchMedia("(min-width:960px)");
+var WIDE=window.matchMedia("(min-width:880px)");
 function layoutWide(){
   if(!WIDE.matches)return;
   var slotted=view.querySelectorAll(":scope>[data-slot]");if(!slotted.length)return;
