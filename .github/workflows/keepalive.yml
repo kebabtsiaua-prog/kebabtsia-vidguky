@@ -14,3 +14,10 @@ jobs:
           ref="obpmsgxanigythxkvrmh"
           [[ "$ref" == __* ]] && { echo "Сервер ще не налаштований"; exit 0; }
           curl -fsS "https://$ref.supabase.co/functions/v1/api"
+      - name: Google ratings
+        run: |
+          ref="obpmsgxanigythxkvrmh"
+          [[ "$ref" == __* ]] && exit 0
+          out=$(curl -sS "https://$ref.supabase.co/functions/v1/google")
+          echo "$out"
+          echo "::notice title=Google::$out"
