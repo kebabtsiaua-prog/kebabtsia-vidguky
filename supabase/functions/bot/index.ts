@@ -75,7 +75,15 @@ async function onMessage(msg: any) {
 
   if (text.startsWith("/start")) {
     const code = text.split(/\s+/)[1];
-    if (!u) u = await bootstrapAdmin(from);
+    if (!u) {
+      try {
+        u = await bootstrapAdmin(from);
+      } catch (e) {
+        console.error(e);
+        await tg("sendMessage", { chat_id: chat, text: `Технічна помилка сервера: ${(e as Error).message}. Перешліть це повідомлення розробнику.` });
+        return;
+      }
+    }
     if (!u && code) u = await redeemCode(code, from);
     if (!u) {
       await tg("sendMessage", { chat_id: chat, text: "Вітаю! Щоб користуватися ботом, потрібен код доступу. Попросіть його в адміністратора і надішліть сюди." });

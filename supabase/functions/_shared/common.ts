@@ -34,11 +34,19 @@ export function channelsFor(role: string): string[] {
 
 export const APP_URL = Deno.env.get("APP_URL") ?? "https://kebabtsiaua-prog.github.io/kebabtsia-vidguky/";
 
-export const db = createClient(
-  Deno.env.get("SUPABASE_URL")!,
-  Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  { auth: { persistSession: false } },
-);
+// New Supabase projects give functions `sb_secret_…` keys in SUPABASE_SECRET_KEYS; older ones only the legacy service_role JWT.
+function serverKey(): string {
+  try {
+    const keys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") ?? "{}");
+    const key = keys.default ?? Object.values(keys)[0];
+    if (typeof key === "string" && key) return key;
+  } catch (e) {
+    console.error("SUPABASE_SECRET_KEYS", e);
+  }
+  return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+}
+
+export const db = createClient(Deno.env.get("SUPABASE_URL")!, serverKey(), { auth: { persistSession: false } });
 
 export type User = {
   tg_id: number;
@@ -118,11 +126,15 @@ export function displayName(u: { first_name?: string; last_name?: string; userna
 
 // The very first person to open the bot becomes the administrator; everybody after needs a code.
 export async function bootstrapAdmin(from: { id: number; first_name?: string; last_name?: string; username?: string }): Promise<User | null> {
-  const { count } = await db.from("users").select("tg_id", { count: "exact", head: true });
+  const { count, error: countError } = await db.from("users").select("tg_id", { count: "exact", head: true });
+  if (countError) throw new Error(`database: ${countError.message}`);
   if (count !== 0) return null;
   const row = { tg_id: from.id, name: displayName(from), username: from.username ?? null, role: "admin" };
   const { data, error } = await db.from("users").insert(row).select().single();
-  if (error) return null;
+  if (error) {
+    console.error("bootstrap admin", error.message);
+    return null;
+  }
   return data as User;
 }
 
