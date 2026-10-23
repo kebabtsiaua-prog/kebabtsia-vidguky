@@ -12,7 +12,7 @@ on:
 concurrency: deploy
 
 env:
-  PROJECT_REF: "__PROJECT_REF__"  # filled in once the Supabase project exists
+  PROJECT_REF: "obpmsgxanigythxkvrmh"
 
 jobs:
   deploy:
