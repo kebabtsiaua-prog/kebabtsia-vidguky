@@ -66,6 +66,11 @@ function escH(s: string) {
 // deno-lint-ignore no-explicit-any
 export async function onGroupMessage(msg: any) {
   const chat = msg.chat;
+  // Making the bot an admin can turn a group into a supergroup with a new id; forget the old one.
+  if (msg.migrate_to_chat_id) {
+    await db.from("tg_chats").delete().eq("chat_id", chat.id);
+    return;
+  }
   const text: string = (msg.text ?? msg.caption ?? "").trim();
   const { data: known } = await db.from("tg_chats").select("*").eq("chat_id", chat.id).maybeSingle();
   const { data: locData } = await db.from("locations").select("id,name,city,aliases,google_address").eq("active", true);
