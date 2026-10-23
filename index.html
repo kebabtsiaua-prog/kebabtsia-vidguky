@@ -26,13 +26,14 @@
   --bad:#ef5b5f; --bad-soft:#3a2026; --warn:#e6a23c; --warn-soft:#3a2f1a; --good:#4cbf6b; --good-soft:#1c3427;
   --shade:rgba(0,0,0,.6); color-scheme:dark}
 html,body{height:100%}
-body{background:var(--bg2);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.35;overflow-wrap:anywhere}
-body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg)}
+body{padding-top:var(--top-gap);background:var(--bg2);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.35;overflow-wrap:anywhere}
+:root{--top-gap:calc(env(safe-area-inset-top,0px) + var(--tg-safe-area-inset-top,0px) + var(--tg-content-safe-area-inset-top,0px))}
+body::before{content:"";position:fixed;inset:0 0 auto;height:var(--top-gap);z-index:30;background:var(--bg)}
 *{box-sizing:border-box}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;padding:0;text-align:inherit}
 button:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .app{max-width:480px;margin:0 auto;min-height:100%;padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}
-.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--bg);border-bottom:1px solid var(--line);padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;align-items:center;gap:8px}
+.top{position:sticky;top:var(--top-gap);z-index:20;background:var(--bg);border-bottom:1px solid var(--line);padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;align-items:center;gap:8px}
 .top h1{font-size:17px;margin:0;font-weight:600;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .back{display:flex;align-items:center;gap:4px;color:var(--accent);font-size:16px;flex:none;padding-right:4px}
 .pill-btn{display:inline-flex;align-items:center;gap:4px;background:var(--accent-soft);color:var(--accent);border-radius:16px;padding:6px 11px;font-size:14px;font-weight:500;white-space:nowrap;flex:none}
@@ -154,6 +155,15 @@ textarea{width:100%;min-height:84px;border:1px solid var(--line);border-radius:1
 @media (prefers-reduced-motion:reduce){.sheet,.shade,.toast{transition:none}}
 .inp{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:inherit;font-size:16px;color:var(--fg);background:var(--bg2)}
 [hidden]{display:none!important}
+/* Laptop / Telegram Desktop full screen: wider column, sections side by side */
+@media (min-width:900px){
+  .app,.nav-in{max-width:1180px}
+  .view{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;padding-inline:20px}
+  .view>.kpis,.view>.empty,.view>.wide{grid-column:1/-1}
+  .fab{right:max(20px,calc(50% - 590px + 20px))}
+  .sheet{max-width:560px}
+}
+
 .inp:focus{outline:2px solid var(--accent);outline-offset:-1px}
 </style>
 </head>
@@ -175,7 +185,9 @@ var view=document.getElementById("view");
 
 // ================= Telegram theme =================
 function applyTheme(){if(TG&&TG.colorScheme)document.documentElement.setAttribute("data-theme",TG.colorScheme)}
-if(TG){TG.ready();TG.expand();applyTheme();TG.onEvent("themeChanged",applyTheme)}
+if(TG){TG.ready();TG.expand();applyTheme();TG.onEvent("themeChanged",applyTheme);
+  // On a laptop Telegram opens mini apps in a small window; ask for full screen there (Bot API 8.0+).
+  if(["tdesktop","macos","weba","webk","web"].indexOf(TG.platform)>=0&&TG.requestFullscreen&&TG.isVersionAtLeast&&TG.isVersionAtLeast("8.0")){try{TG.requestFullscreen()}catch(e){}}}
 
 // ================= server =================
 function api(action,args){
