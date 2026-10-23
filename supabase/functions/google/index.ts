@@ -98,7 +98,20 @@ async function monthlyReport(month: string, locs: Loc[]) {
   return true;
 }
 
-Deno.serve(async () => {
+// ?list=1: which Google place each location is matched to, to check the matches. Reads only the database.
+async function listMatches() {
+  const { data: locs } = await db.from("locations").select("id,name,google_place_id,google_address").eq("active", true).order("name");
+  const { data: snaps } = await db.from("google_daily").select("*").eq("day", kyivToday());
+  const ids = (locs ?? []).map((l) => l.google_place_id).filter(Boolean);
+  return (locs ?? []).map((l) => {
+    const s = (snaps ?? []).find((x) => x.location_id === l.id);
+    const dup = l.google_place_id && ids.filter((i) => i === l.google_place_id).length > 1 ? " ⚠ ДУБЛЬ" : "";
+    return `${l.name} → ${l.google_address ?? "не знайдено"} · ${s?.rating ?? "—"} (${s?.count ?? "—"})${dup}`;
+  });
+}
+
+Deno.serve(async (req) => {
+  if (new URL(req.url).searchParams.has("list")) return json(await listMatches());
   const key = Deno.env.get("GOOGLE_MAPS_API_KEY")?.trim();
   if (!key) return json({ ok: false, reason: "GOOGLE_MAPS_API_KEY is not set" });
   const today = kyivToday();

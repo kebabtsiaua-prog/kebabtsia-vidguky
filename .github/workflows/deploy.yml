@@ -50,3 +50,10 @@ jobs:
         run: |
           curl -fsS "https://$PROJECT_REF.supabase.co/functions/v1/bot?setup=1" \
             || echo "::warning::Бот ще не підключений: додайте TELEGRAM_BOT_TOKEN у Supabase → Edge Functions → Secrets і запустіть цей workflow ще раз."
+      - name: Google matches
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          curl -sS "https://$PROJECT_REF.supabase.co/functions/v1/google?list=1" | python3 -c "
+          import json,sys
+          print('::notice title=Google::'+'%0A'.join(json.load(sys.stdin)))
+          " || true
