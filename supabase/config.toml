@@ -4,5 +4,8 @@ project_id = "kebabtsia-vidguky"
 [functions.api]
 verify_jwt = false
 
+[functions.google]
+verify_jwt = false
+
 [functions.bot]
 verify_jwt = false
