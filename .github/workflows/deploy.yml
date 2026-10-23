@@ -61,8 +61,10 @@ jobs:
       - name: Poster
         if: steps.check.outputs.ready == 'true'
         run: |
-          out=$(curl -sS "https://$PROJECT_REF.supabase.co/functions/v1/poster?probe=1") || true; echo
-          echo "::notice title=Poster::$out"
+          curl -sS "https://$PROJECT_REF.supabase.co/functions/v1/poster?probe=1" | python3 -c "
+          import json,sys
+          for k,v in json.load(sys.stdin).items(): print('::notice title=Poster '+k+'::'+json.dumps(v,ensure_ascii=False)[:1800])
+          " || true
       - name: Telegram groups
         if: steps.check.outputs.ready == 'true'
         run: |

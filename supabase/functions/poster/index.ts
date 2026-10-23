@@ -35,8 +35,7 @@ Deno.serve(async (req) => {
   try {
     // deno-lint-ignore no-explicit-any
     const spots: any[] = await poster(token, "access.getSpots");
-    out.spots = spots.map((s) => `${s.spot_id}: ${s.spot_name ?? s.name} | ${s.spot_adress ?? s.address ?? ""}`);
-    out.spotShape = shape(spots[0]);
+    out.spots = spots.length;
     spot = String(spots[0]?.spot_id ?? "");
   } catch (e) {
     out.spots = (e as Error).message;
