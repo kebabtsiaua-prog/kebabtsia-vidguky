@@ -21,3 +21,8 @@ jobs:
           out=$(curl -sS "https://$ref.supabase.co/functions/v1/google")
           echo "$out"
           echo "::notice title=Google::$out"
+      - name: Poster checks
+        run: |
+          ref="obpmsgxanigythxkvrmh"
+          out=$(curl -sS "https://$ref.supabase.co/functions/v1/poster")
+          echo "::notice title=Poster::$out"
