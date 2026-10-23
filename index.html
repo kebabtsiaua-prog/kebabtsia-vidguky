@@ -1069,7 +1069,11 @@ function start(){
   if(!TG||!TG.initData){bare('<div class="muted">Відкрийте апку через бота в Telegram: @kebabtsia_vidguky_bot, кнопка «Відгуки».</div>');return}
   bare('<div class="muted">Завантаження…</div>');
   api("me").then(function(me){ME=me;THEMES=me.topics;RESULTS=me.results;S.mk=me.today.slice(0,7);setWindow(S.mk);
-    if(isLocAdmin())S.tab="loc";return loadMonth()}).catch(showError);
+    if(isLocAdmin())S.tab="loc";
+    // links from the bot: ?tab=queue opens the queue, ?item=123 opens that complaint
+    var q=new URLSearchParams(location.search),tab=q.get("tab"),item=+q.get("item");
+    if(tab&&tabsFor().some(function(t){return t[0]===tab}))S.tab=tab;
+    return loadMonth().then(function(){if(item&&items.some(function(r){return r.id===item}))openItem(item)})}).catch(showError);
 }
 start();
 })();

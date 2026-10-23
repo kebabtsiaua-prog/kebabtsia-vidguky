@@ -1,0 +1,18 @@
+# Morning digest in Telegram for the people who get rating alerts: complaints waiting longer than a day and Google drops.
+# 07:00 UTC = 09:00 in Kyiv in winter (10:00 in summer).
+name: Ранкова зведенка
+
+on:
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+
+jobs:
+  digest:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          ref="obpmsgxanigythxkvrmh"
+          out=$(curl -sS "https://$ref.supabase.co/functions/v1/bot?digest=1")
+          echo "$out"
+          echo "::notice title=Зведенка::$out"
