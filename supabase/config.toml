@@ -9,3 +9,6 @@ verify_jwt = false
 
 [functions.bot]
 verify_jwt = false
+
+[functions.poster]
+verify_jwt = false
