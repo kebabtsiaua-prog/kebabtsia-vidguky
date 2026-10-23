@@ -80,6 +80,13 @@ export async function onGroupMessage(msg: any) {
     last_message_at: new Date().toISOString(),
   });
   if (!r) return;
+  if (!known?.ratings) {
+    const where = locs.find((l) => l.id === locId)?.name;
+    const text = `✅ Бот бачить оцінки в групі «${escH(chat.title ?? "")}»` +
+      (where ? ` і відносить їх до точки «${escH(where)}».` : `, але не зміг визначити точку. Напишіть розробнику.`);
+    const { data: admins } = await db.from("users").select("tg_id").eq("role", "admin").eq("active", true);
+    for (const a of admins ?? []) await tg("sendMessage", { chat_id: a.tg_id, text, parse_mode: "HTML" }).catch(console.error);
+  }
   if (!locId) {
     console.error("rating without location", chat.title, r.place);
     return;
@@ -129,10 +136,17 @@ async function recipients(): Promise<{ tg_id: number }[]> {
 // deno-lint-ignore no-explicit-any
 export async function onMembership(m: any) {
   const status = m.new_chat_member?.status;
-  await db.from("tg_chats").upsert({
-    chat_id: m.chat.id, title: m.chat.title ?? "", type: m.chat.type,
-    is_admin: status === "administrator", left: status === "left" || status === "kicked",
-  });
+  const isAdmin = status === "administrator", left = status === "left" || status === "kicked";
+  const { data: before } = await db.from("tg_chats").select("is_admin,left").eq("chat_id", m.chat.id).maybeSingle();
+  await db.from("tg_chats").upsert({ chat_id: m.chat.id, title: m.chat.title ?? "", type: m.chat.type, is_admin: isAdmin, left });
+  if (before && before.is_admin === isAdmin && before.left === left) return;
+  // Tell the admins at once, so whoever is adding the bot to the groups sees it worked.
+  const title = escH(m.chat.title ?? String(m.chat.id));
+  const text = left ? `Бота прибрали з групи «${title}».`
+    : isAdmin ? `✅ Бот тепер адміністратор у групі «${title}». Оцінки з неї потраплятимуть в апку.`
+    : `Бота додано в групу «${title}». Зробіть його адміністратором групи, інакше він не бачить оцінок.`;
+  const { data: admins } = await db.from("users").select("tg_id").eq("role", "admin").eq("active", true);
+  for (const a of admins ?? []) await tg("sendMessage", { chat_id: a.tg_id, text, parse_mode: "HTML" }).catch(console.error);
 }
 
 // GET bot?chats=1: the groups the bot is in, to check the setup after a deploy.
