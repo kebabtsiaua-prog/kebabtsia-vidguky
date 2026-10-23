@@ -1,7 +1,10 @@
 // Google ratings: once a day (called by the keep-awake workflow) takes each location's rating and review count
 // from the Places API, keeps a daily snapshot and fills google_monthly. On the first run of a month it sends
-// admins last month's summary. Needs GOOGLE_MAPS_API_KEY in Supabase secrets; without it does nothing.
-import { db, kyivToday, tg } from "../_shared/common.ts";
+// admins last month's summary. The same call returns the reviews Google shows for the place (up to 5): a new one with
+// 1–3 stars becomes a complaint and a direct message to the team, like a low app rating.
+// Needs GOOGLE_MAPS_API_KEY in Supabase secrets; without it does nothing.
+import { APP_URL, db, kyivToday, tg } from "../_shared/common.ts";
+import { NEGATIVE_MAX, recipients } from "../_shared/uployal.ts";
 
 const PLACES = "https://places.googleapis.com/v1";
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
@@ -100,6 +103,54 @@ async function monthlyReport(month: string, locs: Loc[]) {
   return true;
 }
 
+type Review = {
+  name: string; rating?: number; publishTime?: string;
+  text?: { text?: string }; originalText?: { text?: string }; authorAttribution?: { displayName?: string };
+};
+const escH = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
+const DAY = 86400000;
+
+// Records reviews not seen before. A low one published in the last 14 days becomes a complaint; on the first check of a
+// place only ones from the last 2 days do, so older reviews already entered by hand are not added again.
+async function takeReviews(l: Loc, reviews: Review[]) {
+  if (!reviews.length) return 0;
+  const { count: seen } = await db.from("google_reviews").select("id", { count: "exact", head: true }).eq("location_id", l.id);
+  const window = (seen ? 14 : 2) * DAY;
+  let made = 0;
+  for (const r of reviews) {
+    const text = (r.originalText?.text || r.text?.text || "").trim();
+    const author = r.authorAttribution?.displayName ?? "";
+    const { error } = await db.from("google_reviews").insert({
+      id: r.name, location_id: l.id, rating: r.rating ?? null, text, author, published_at: r.publishTime ?? null,
+    });
+    if (error) continue; // seen before
+    const at = r.publishTime ? new Date(r.publishTime) : null;
+    if (!r.rating || r.rating > NEGATIVE_MAX || !at || Date.now() - at.getTime() > window) continue;
+    const day = at.toLocaleDateString("sv-SE", { timeZone: "Europe/Kyiv" });
+    const { data: c } = await db.from("complaints").insert({
+      location_id: l.id, channel: "Google", happened_on: day, rating: r.rating,
+      text: text || `Оцінка ${r.rating} без коментаря`, source: "google", external_id: `google:${r.name}`,
+    }).select("id").maybeSingle();
+    if (!c) continue;
+    made++;
+    const msg = [
+      `⚠️ <b>Негативний відгук у Google</b>`,
+      `📍 ${escH(l.name)}`,
+      `${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)} ${r.rating} з 5 · ${day.split("-").reverse().join(".")}`,
+      `💬 ${text ? escH(text) : "<i>без коментаря</i>"}`,
+    ];
+    if (author) msg.push(`👤 ${escH(author)}`);
+    msg.push("", "Дайте відповідь на відгук у Google і запишіть рішення в апці.");
+    for (const u of await recipients()) {
+      await tg("sendMessage", {
+        chat_id: u.tg_id, parse_mode: "HTML", text: msg.join("\n"),
+        reply_markup: { inline_keyboard: [[{ text: "📊 Відкрити апку", web_app: { url: APP_URL } }]] },
+      }).catch(console.error);
+    }
+  }
+  return made;
+}
+
 // ?list=1: which Google place each location is matched to, to check the matches. Reads only the database.
 async function listMatches() {
   const { data: locs } = await db.from("locations").select("id,name,google_place_id,google_address").eq("active", true).order("name");
@@ -113,7 +164,8 @@ async function listMatches() {
 }
 
 Deno.serve(async (req) => {
-  if (new URL(req.url).searchParams.has("list")) return json(await listMatches());
+  const params = new URL(req.url).searchParams;
+  if (params.has("list")) return json(await listMatches());
   const key = Deno.env.get("GOOGLE_MAPS_API_KEY")?.trim();
   if (!key) return json({ ok: false, reason: "GOOGLE_MAPS_API_KEY is not set" });
   const today = kyivToday();
@@ -121,9 +173,10 @@ Deno.serve(async (req) => {
   const { data } = await db.from("locations").select("id,name,google_place_id,google_query").eq("active", true).order("id");
   const locs = (data ?? []) as Loc[];
   const { data: done } = await db.from("google_daily").select("location_id").eq("day", today);
-  const doneIds = new Set((done ?? []).map((d) => d.location_id));
+  // ?reviews=1 checks every place again today, for a first look at the reviews (each call is billed).
+  const doneIds = new Set(params.has("reviews") ? [] : (done ?? []).map((d) => d.location_id));
   const errors: string[] = [];
-  let taken = 0;
+  let taken = 0, complaints = 0;
   for (const l of locs.filter((l) => !doneIds.has(l.id))) {
     try {
       const used = new Set(locs.filter((o) => o.id !== l.id && o.google_place_id).map((o) => o.google_place_id!));
@@ -133,12 +186,13 @@ Deno.serve(async (req) => {
         errors.push(`${l.name}: не знайдено в Google`);
         continue;
       }
-      const p = await places(key, `places/${id}`, "rating,userRatingCount");
+      const p = await places(key, `places/${id}?languageCode=uk`, "rating,userRatingCount,reviews");
       const { error } = await db.from("google_daily").upsert({
         location_id: l.id, day: today, rating: p.rating ?? null, count: p.userRatingCount ?? 0,
       });
       if (error) throw new Error(error.message);
       taken++;
+      complaints += await takeReviews(l, p.reviews ?? []);
     } catch (e) {
       errors.push(`${l.name}: ${(e as Error).message}`);
     }
@@ -150,5 +204,5 @@ Deno.serve(async (req) => {
   } catch (e) {
     errors.push((e as Error).message);
   }
-  return json({ ok: !errors.length, day: today, taken, already: doneIds.size, reported, errors });
+  return json({ ok: !errors.length, day: today, taken, already: doneIds.size, complaints, reported, errors });
 });

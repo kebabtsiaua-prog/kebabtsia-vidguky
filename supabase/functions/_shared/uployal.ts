@@ -129,7 +129,7 @@ export async function onGroupMessage(msg: any) {
 
 // Who is told about a negative rating: people with notifications switched on; until anyone has, the comms managers
 // Аня and Олена (owner, 2026-10-23) found by name; if they have not joined yet, the admins.
-async function recipients(): Promise<{ tg_id: number }[]> {
+export async function recipients(): Promise<{ tg_id: number }[]> {
   const { data: users } = await db.from("users").select("tg_id,name,role,notify").eq("active", true);
   const all = users ?? [];
   if (all.some((u) => u.notify != null)) return all.filter((u) => u.notify);
