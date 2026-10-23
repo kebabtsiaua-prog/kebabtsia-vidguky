@@ -58,11 +58,6 @@ jobs:
           import json,sys
           print('::notice title=Google::'+'%0A'.join(json.load(sys.stdin)))
           " || true
-      - name: Google reviews (first check)
-        if: steps.check.outputs.ready == 'true'
-        run: |
-          out=$(curl -sS "https://$PROJECT_REF.supabase.co/functions/v1/google?reviews=1") || true; echo
-          echo "::notice title=Reviews::$out"
       - name: Telegram groups
         if: steps.check.outputs.ready == 'true'
         run: |
