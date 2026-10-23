@@ -36,7 +36,6 @@ function shiftMonth(month: string, by: number): string {
 // deno-lint-ignore no-explicit-any
 function scope(q: any, u: User) {
   if (u.role === "loc_admin") return q.eq("location_id", u.location_id);
-  if (u.role === "operator") return q.eq("created_by", u.tg_id);
   return q;
 }
 
