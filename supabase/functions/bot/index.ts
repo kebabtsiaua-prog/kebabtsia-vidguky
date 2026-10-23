@@ -4,9 +4,10 @@
 import { b64, parseComplaint } from "../_shared/ai.ts";
 import { listChats, onGroupMessage, onMembership } from "../_shared/uployal.ts";
 import {
-  activeLocations, APP_URL, bootstrapAdmin, channelsFor, db, getUser, kyivToday, type Location, redeemCode, ROLES,
-  savePhoto, tg, tgFile, type User, webhookSecret,
+  activeLocations, APP_URL, bootstrapAdmin, channelsFor, db, getUser, itemUrl, kyivToday, type Location, redeemCode, ROLES,
+  savePhoto, tabUrl, tg, tgFile, type User, webhookSecret,
 } from "../_shared/common.ts";
+import { recipients } from "../_shared/uployal.ts";
 
 type Draft = {
   loc: number | null;
@@ -16,6 +17,8 @@ type Draft = {
   topics: string[];
   rating: number | null;
   photo: string | null; // Telegram file_id
+  msg?: number;          // the draft's message, to update it after the text is corrected
+  awaitText?: boolean;   // «Текст» pressed: the next message from this person replaces the text
 };
 
 const PAGE = 10;
@@ -29,23 +32,26 @@ function draftText(d: Draft, locs: Location[]): string {
   const loc = locs.find((l) => l.id === d.loc);
   const [y, m, day] = d.date.split("-");
   const lines = [
-    "<b>Нова скарга</b>",
-    `📍 Точка: ${loc ? esc(loc.name) : "<i>не визначено, виберіть кнопкою</i>"}`,
-    `📣 Канал: ${d.ch ? esc(d.ch) : "<i>не визначено, виберіть кнопкою</i>"}`,
-    `📅 Дата: ${day}.${m}.${y}${d.rating ? ` · ${"★".repeat(d.rating)}` : ""}`,
-    `💬 ${esc(d.text || "(без тексту)")}`,
+    "✨ <b>Перевірте скаргу</b>",
+    "",
+    `<b>Точка:</b> ${loc ? esc(loc.name) : "<i>не визначено, виберіть кнопкою</i>"}`,
+    `<b>Канал:</b> ${d.ch ? esc(d.ch) : "<i>не визначено, виберіть кнопкою</i>"}${d.rating ? ` · ${"★".repeat(d.rating)}` : ""}`,
+    `<b>Дата:</b> ${day}.${m}.${y}`,
   ];
-  if (d.topics.length) lines.push(`🏷 ${esc(d.topics.join(", "))}`);
-  lines.push("", d.loc && d.ch ? "Усе вірно? Натисніть «Зберегти»." : "Виберіть точку і канал, потім «Зберегти».");
+  if (d.topics.length) lines.push(`<b>Тема:</b> ${esc(d.topics.join(", "))}`);
+  lines.push(`<blockquote>${esc(d.text || "(без тексту)")}</blockquote>`);
+  lines.push(d.awaitText ? "✏️ Надішліть правильний текст скарги наступним повідомленням."
+    : d.loc && d.ch ? "Усе вірно? ШІ нічого не зберігає сам, натисніть «Зберегти»." : "Виберіть точку і канал, потім «Зберегти».");
   return lines.join("\n");
 }
 
 function draftKeyboard(id: number, d: Draft, u: User) {
   const rows = [];
-  if (d.loc && d.ch && d.text) rows.push([{ text: "✅ Зберегти", callback_data: `s:${id}` }]);
+  if (d.loc && d.ch && d.text) rows.push([{ text: "✓ Зберегти", callback_data: `s:${id}` }]);
   const edit = [];
-  if (u.role !== "loc_admin") edit.push({ text: "📍 Точка", callback_data: `lp:${id}:0` });
-  edit.push({ text: "📣 Канал", callback_data: `c:${id}` });
+  if (u.role !== "loc_admin") edit.push({ text: "Точка", callback_data: `lp:${id}:0` });
+  edit.push({ text: "Канал", callback_data: `c:${id}` });
+  edit.push({ text: "Текст", callback_data: `t:${id}` });
   rows.push(edit);
   rows.push([{ text: "✖ Скасувати", callback_data: `x:${id}` }]);
   return { inline_keyboard: rows };
@@ -55,7 +61,10 @@ async function showDraft(chat: number, msgId: number | null, id: number, d: Draf
   const locs = await activeLocations();
   const body = { chat_id: chat, text: draftText(d, locs), parse_mode: "HTML", reply_markup: draftKeyboard(id, d, u) };
   if (msgId) await tg("editMessageText", { ...body, message_id: msgId });
-  else await tg("sendMessage", body);
+  else {
+    const sent = await tg("sendMessage", body);
+    if (sent.result?.message_id) await storeDraft(id, { ...d, msg: sent.result.message_id });
+  }
 }
 
 async function loadDraft(id: number, u: User): Promise<Draft | null> {
@@ -109,6 +118,19 @@ async function onMessage(msg: any) {
     return;
   }
 
+  // «Текст» was pressed on a draft: this message is the corrected text.
+  if (text && !msg.photo) {
+    const { data: waiting } = await db.from("bot_drafts").select("id,data").eq("tg_id", u.tg_id).eq("data->>awaitText", "true")
+      .gte("created_at", new Date(Date.now() - 6 * 3600000).toISOString()).order("id", { ascending: false }).limit(1).maybeSingle();
+    if (waiting) {
+      const d = { ...(waiting.data as Draft), text, awaitText: false };
+      await storeDraft(waiting.id, d);
+      if (d.msg) await tg("deleteMessage", { chat_id: chat, message_id: d.msg }).catch(() => {});
+      await showDraft(chat, null, waiting.id, { ...d, msg: undefined }, u);
+      return;
+    }
+  }
+
   const photoId: string | null = msg.photo?.length ? msg.photo[msg.photo.length - 1].file_id
     : msg.document?.mime_type?.startsWith("image/") ? msg.document.file_id : null;
   if (!photoId && !text) {
@@ -156,6 +178,10 @@ async function onCallback(cb: any) {
     await db.from("bot_drafts").delete().eq("id", id);
     await tg("editMessageText", { chat_id: chat, message_id: msgId, text: "Скасовано." });
   } else if (kind === "v") {
+    await showDraft(chat, msgId, id, d, u);
+  } else if (kind === "t") {
+    d.awaitText = true;
+    await storeDraft(id, d);
     await showDraft(chat, msgId, id, d, u);
   } else if (kind === "lp") {
     const locs = await activeLocations();
@@ -210,11 +236,52 @@ async function onCallback(cb: any) {
       chat_id: chat,
       message_id: msgId,
       parse_mode: "HTML",
-      text: `✅ Скаргу збережено\n📍 ${esc(locs.find((l) => l.id === d.loc)?.name ?? "")} · ${esc(d.ch)}\n💬 ${esc(d.text)}\n\nВона в апці у «Чекають рішення».`,
-      reply_markup: { inline_keyboard: [[openApp]] },
+      text: `✓ <b>Збережено · №${row.id}</b>\n${esc(locs.find((l) => l.id === d.loc)?.name ?? "")} · ${esc(d.ch)}\n<blockquote>${esc(d.text)}</blockquote>Скарга в апці у «Чекають рішення».`,
+      reply_markup: { inline_keyboard: [[{ text: "Відкрити скаргу", web_app: { url: itemUrl(row.id) } }]] },
     });
   }
   await tg("answerCallbackQuery", { callback_query_id: cb.id });
+}
+
+// GET ?digest=1, every morning from the «Ранкова зведенка» workflow: what waits for a decision (anything older than a day
+// is listed, owner 2026-10-23) and where Google went down since the day before. Sent once a day, only when there is news.
+const DAY = 86400000;
+async function digest(): Promise<Record<string, unknown>> {
+  const today = kyivToday();
+  const { error: dup } = await db.from("bot_digests").insert({ day: today });
+  if (dup) return { ok: true, sent: 0, reason: "already sent today" };
+  const locs = await activeLocations();
+  const name = (id: number) => (locs.find((l) => l.id === id)?.name ?? "").replace(/^Львів, /, "");
+  const { data: open } = await db.from("complaints").select("id,location_id,channel,happened_on,created_at,source").eq("result", "");
+  const waited = (c: { happened_on: string; created_at: string; source: string }) => {
+    const from = c.source === "sheet" ? c.happened_on : c.created_at.slice(0, 10) > c.happened_on ? c.created_at.slice(0, 10) : c.happened_on;
+    return Math.round((Date.parse(today) - Date.parse(from)) / DAY);
+  };
+  const all = (open ?? []).filter((c) => locs.some((l) => l.id === c.location_id)).map((c) => ({ ...c, days: waited(c) })).sort((a, b) => b.days - a.days);
+  const old = all.filter((c) => c.days >= 1);
+  // Google: the two latest daily snapshots per location
+  const { data: snaps } = await db.from("google_daily").select("location_id,day,rating").gte("day", new Date(Date.parse(today) - 3 * DAY).toISOString().slice(0, 10))
+    .order("day", { ascending: false });
+  const drops: string[] = [];
+  for (const l of locs) {
+    const s = (snaps ?? []).filter((x) => x.location_id === l.id && x.rating != null);
+    if (s.length >= 2 && Number(s[0].rating) < Number(s[1].rating)) drops.push(`${esc(name(l.id))} ${String(s[1].rating).replace(".", ",")} → ${String(s[0].rating).replace(".", ",")}`);
+  }
+  if (!old.length && !drops.length) return { ok: true, sent: 0, reason: "nothing to report" };
+  const lines = ["☀️ <b>Ранкова зведенка</b>", ""];
+  if (all.length) lines.push(`Чекають рішення: <b>${all.length}</b>${old.length ? `, з них довше доби: <b>${old.length}</b>` : ""}`);
+  for (const c of old.slice(0, 8)) lines.push(`· ${esc(name(c.location_id))}, ${esc(c.channel)} · ${c.days} дн`);
+  if (old.length > 8) lines.push(`· і ще ${old.length - 8}`);
+  if (drops.length) lines.push("", `Google за добу впав: ${drops.slice(0, 6).join("; ")}${drops.length > 6 ? ` і ще ${drops.length - 6}` : ""}`);
+  let sent = 0;
+  for (const u of await recipients()) {
+    const r = await tg("sendMessage", {
+      chat_id: u.tg_id, parse_mode: "HTML", text: lines.join("\n"),
+      reply_markup: { inline_keyboard: [[{ text: "Відкрити чергу", web_app: { url: tabUrl("queue") } }]] },
+    }).catch(console.error);
+    if (r?.ok) sent++;
+  }
+  return { ok: true, sent, waiting: all.length, older: old.length, drops: drops.length };
 }
 
 async function setup(req: Request): Promise<Response> {
@@ -236,6 +303,7 @@ Deno.serve(async (req) => {
   try {
     if (req.method === "GET") {
       if (new URL(req.url).searchParams.has("chats")) return Response.json(await listChats());
+      if (new URL(req.url).searchParams.has("digest")) return Response.json(await digest());
       return await setup(req);
     }
     if (req.headers.get("x-telegram-bot-api-secret-token") !== await webhookSecret()) {

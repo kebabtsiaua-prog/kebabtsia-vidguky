@@ -33,6 +33,11 @@ export function channelsFor(role: string): string[] {
 }
 
 export const APP_URL = Deno.env.get("APP_URL") ?? "https://kebabtsiaua-prog.github.io/kebabtsia-vidguky/";
+// Opens the app straight on one complaint, or on a tab (the app reads ?item= and ?tab=).
+export const itemUrl = (id: number) => `${APP_URL}?item=${id}`;
+export const tabUrl = (tab: string) => `${APP_URL}?tab=${tab}`;
+// A comment counts when it has a few real letters, not just "-" or "ок".
+export const hasComment = (s: string) => (s.match(/[a-zа-яіїєґ]/gi) ?? []).length >= 3;
 
 // New Supabase projects give functions `sb_secret_…` keys in SUPABASE_SECRET_KEYS; older ones only the legacy service_role JWT.
 function serverKey(): string {

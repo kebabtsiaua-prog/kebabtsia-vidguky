@@ -1,7 +1,8 @@
 // App order ratings that Uployal's bot posts into the per-location Telegram groups.
 // Our bot sits in those groups as an admin (Bot-to-Bot Communication Mode on, Group Privacy off), never writes there,
-// keeps every rating for the monthly count and turns low ones into complaints with a direct message to the team.
-import { APP_URL, db, kyivToday, tg } from "./common.ts";
+// keeps every rating for the monthly count and turns low ones with a real comment into complaints with a direct message
+// to the team. A low rating without a comment only counts in the statistics (owner, 2026-10-23: too much noise otherwise).
+import { db, hasComment, itemUrl, kyivToday, tg } from "./common.ts";
 
 export const NEGATIVE_MAX = 3; // 1–3 stars count as a complaint
 
@@ -102,27 +103,27 @@ export async function onGroupMessage(msg: any) {
     location_id: locId, rated_on: day, rating: r.rating, comment: r.comment, external_id: ext, chat_id: chat.id,
   });
   if (error) return; // already counted (same order posted twice)
-  if (r.rating > NEGATIVE_MAX) return;
+  if (r.rating > NEGATIVE_MAX || !hasComment(r.comment)) return;
 
   const { data: c } = await db.from("complaints").insert({
     location_id: locId, channel: "Оцінки в додатку", happened_on: day, rating: r.rating,
-    text: r.comment || `Оцінка ${r.rating} без коментаря`, source: "uployal", external_id: ext,
+    text: r.comment, source: "uployal", external_id: ext,
   }).select("id").maybeSingle();
   if (!c) return;
   const loc = locs.find((l) => l.id === locId)!;
   const lines = [
-    `⚠️ <b>Негативна оцінка в додатку</b>`,
-    `📍 ${escH(loc.name)}`,
-    `${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)} ${r.rating} з 5 · ${fmt(day)}`,
-    `💬 ${r.comment ? escH(r.comment) : "<i>без коментаря</i>"}`,
+    `🔴 <b>Оцінка ${r.rating} з 5 у додатку</b>`,
+    `${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)} · ${fmt(day)}`,
+    "",
+    `<b>Точка:</b> ${escH(loc.name)}`,
   ];
-  if (r.guest || r.phone) lines.push(`👤 ${escH([r.guest, r.phone].filter(Boolean).join(", "))}`);
-  if (r.order) lines.push(`🧾 Замовлення ${escH(r.order)}`);
-  lines.push("", "Зверніть увагу і зв'яжіться з гостем. Рішення запишіть в апці.");
+  if (r.guest || r.phone) lines.push(`<b>Гість:</b> ${escH([r.guest, r.phone].filter(Boolean).join(", "))}`);
+  if (r.order) lines.push(`<b>Замовлення:</b> ${escH(r.order)}`);
+  lines.push(`<blockquote>${escH(r.comment)}</blockquote>`, "<i>Зв'яжіться з гостем. Рішення запишіть в апці.</i>");
   for (const u of await recipients()) {
     await tg("sendMessage", {
       chat_id: u.tg_id, parse_mode: "HTML", text: lines.join("\n"),
-      reply_markup: { inline_keyboard: [[{ text: "📊 Відкрити апку", web_app: { url: APP_URL } }]] },
+      reply_markup: { inline_keyboard: [[{ text: "Відкрити скаргу", web_app: { url: itemUrl(c.id) } }]] },
     }).catch(console.error);
   }
 }

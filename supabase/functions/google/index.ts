@@ -3,7 +3,7 @@
 // admins last month's summary. The same call returns the reviews Google shows for the place (up to 5): a new one with
 // 1–3 stars becomes a complaint and a direct message to the team, like a low app rating.
 // Needs GOOGLE_MAPS_API_KEY in Supabase secrets; without it does nothing.
-import { APP_URL, db, kyivToday, tg } from "../_shared/common.ts";
+import { db, itemUrl, kyivToday, tg } from "../_shared/common.ts";
 import { NEGATIVE_MAX, recipients } from "../_shared/uployal.ts";
 
 const PLACES = "https://places.googleapis.com/v1";
@@ -134,17 +134,17 @@ async function takeReviews(l: Loc, reviews: Review[]) {
     if (!c) continue;
     made++;
     const msg = [
-      `⚠️ <b>Негативний відгук у Google</b>`,
-      `📍 ${escH(l.name)}`,
-      `${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)} ${r.rating} з 5 · ${day.split("-").reverse().join(".")}`,
-      `💬 ${text ? escH(text) : "<i>без коментаря</i>"}`,
+      `🔴 <b>Відгук ${r.rating} з 5 у Google</b>`,
+      `${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)} · ${day.split("-").reverse().join(".")}`,
+      "",
+      `<b>Точка:</b> ${escH(l.name)}`,
     ];
-    if (author) msg.push(`👤 ${escH(author)}`);
-    msg.push("", "Дайте відповідь на відгук у Google і запишіть рішення в апці.");
+    if (author) msg.push(`<b>Гість:</b> ${escH(author)}`);
+    msg.push(text ? `<blockquote>${escH(text)}</blockquote>` : "<i>Без тексту, лише оцінка.</i>", "<i>Дайте відповідь на відгук у Google і запишіть рішення в апці.</i>");
     for (const u of await recipients()) {
       await tg("sendMessage", {
         chat_id: u.tg_id, parse_mode: "HTML", text: msg.join("\n"),
-        reply_markup: { inline_keyboard: [[{ text: "📊 Відкрити апку", web_app: { url: APP_URL } }]] },
+        reply_markup: { inline_keyboard: [[{ text: "Відкрити скаргу", web_app: { url: itemUrl(c.id) } }]] },
       }).catch(console.error);
     }
   }

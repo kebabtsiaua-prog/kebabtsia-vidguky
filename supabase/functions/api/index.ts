@@ -75,7 +75,7 @@ async function monthData(u: User, month: string) {
   }
   const { data: staff } = await db.from("users").select("name,role").eq("active", true).in("role", ["admin", "comms"]);
   // Names of whoever added a complaint, so the app can always show «хто додав» (also for people whose access was switched off).
-  const authors = [...new Set((items ?? []).map((r) => r.created_by).filter(Boolean))];
+  const authors = [...new Set((items ?? []).map((r: { created_by: number | null }) => r.created_by).filter(Boolean))];
   const { data: who } = authors.length ? await db.from("users").select("tg_id,name").in("tg_id", authors) : { data: [] };
   const people: Record<string, string> = {};
   for (const p of who ?? []) people[p.tg_id] = p.name;
