@@ -65,10 +65,16 @@ async function monthData(u: User, month: string) {
   const { data: google } = await db.from("google_monthly").select("*").gte("month", sixFrom).lt("month", to);
   const { data: checks } = await db.from("checks_monthly").select("*").gte("month", from).lt("month", to);
   // App order ratings per location and month: all of them, and how many were negative (1–3 stars).
-  const { data: rated } = await scope(db.from("app_ratings").select("location_id,rated_on,rating"), u)
-    .gte("rated_on", sixFrom).lt("rated_on", to);
+  // Read in pages: the server returns at most 1000 rows per request, and a month has hundreds of ratings.
+  const rated: { location_id: number; rated_on: string; rating: number }[] = [];
+  for (let at = 0;; at += 1000) {
+    const { data: page } = await scope(db.from("app_ratings").select("location_id,rated_on,rating"), u)
+      .gte("rated_on", sixFrom).lt("rated_on", to).order("id").range(at, at + 999);
+    rated.push(...(page ?? []));
+    if ((page ?? []).length < 1000) break;
+  }
   const app: Record<string, { n: number; neg: number; sum: number }> = {};
-  for (const r of rated ?? []) {
+  for (const r of rated) {
     const k = `${r.location_id}|${String(r.rated_on).slice(0, 7)}`;
     const x = app[k] ??= { n: 0, neg: 0, sum: 0 };
     x.n++;

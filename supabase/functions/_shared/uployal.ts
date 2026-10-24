@@ -159,12 +159,13 @@ export async function onMembership(m: any) {
 export async function listChats() {
   const { data } = await db.from("tg_chats").select("*").order("title");
   const { data: locs } = await db.from("locations").select("id,name");
-  const { data: rated } = await db.from("app_ratings").select("rating,created_at");
+  const { count: total } = await db.from("app_ratings").select("id", { count: "exact", head: true });
+  const { count: low } = await db.from("app_ratings").select("id", { count: "exact", head: true }).lte("rating", NEGATIVE_MAX);
+  const { data: last } = await db.from("app_ratings").select("created_at").order("created_at", { ascending: false }).limit(1);
   const { count: notified } = await db.from("complaints").select("id", { count: "exact", head: true }).eq("source", "uployal");
-  const all = rated ?? [];
   const head = `Разом: груп ${data?.length ?? 0}, адмін у ${(data ?? []).filter((c) => c.is_admin).length}; ` +
-    `оцінок ${all.length}, негативних ${all.filter((r) => r.rating <= NEGATIVE_MAX).length}, скарг з них ${notified ?? 0}` +
-    (all.length ? `; остання ${all.map((r) => r.created_at).sort().at(-1)}` : "");
+    `оцінок ${total ?? 0}, негативних ${low ?? 0}, скарг з них ${notified ?? 0}` +
+    (last?.length ? `; остання ${last[0].created_at}` : "");
   return [head, ...(data ?? []).map((c) =>
     `${c.title || c.chat_id} · ${c.left ? "вийшов" : c.is_admin ? "адмін" : "НЕ адмін"} · повідомлень ${c.messages}, оцінок ${c.ratings} · ${
       locs?.find((l) => l.id === c.location_id)?.name ?? "точка не визначена"
