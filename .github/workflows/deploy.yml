@@ -57,6 +57,10 @@ jobs:
           echo "::notice title=Announce::$out"
           out=$(curl -sS "https://$PROJECT_REF.supabase.co/functions/v1/bot?announce=survey-start-roman")
           echo "::notice title=Survey start::$out"
+          for who in anya olena; do
+            out=$(curl -sS "https://$PROJECT_REF.supabase.co/functions/v1/bot?announce=survey-start-$who")
+            echo "::notice title=Survey start $who::$out"
+          done
           out=$(curl -sS "https://$PROJECT_REF.supabase.co/functions/v1/bot?sheet=1")
           echo "::notice title=Sheet::$out"
       - name: Google matches
