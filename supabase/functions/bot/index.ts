@@ -1,6 +1,7 @@
 // Telegram webhook for @kebabtsia_vidguky_bot.
 // A person sends a screenshot or text → AI fills location, channel and the complaint → buttons to fix and save.
 // GET ?setup=1 (called by the deploy workflow) points the webhook and the menu button at this function.
+import { syncSheet } from "../_shared/sheet.ts";
 import { b64, parseComplaint } from "../_shared/ai.ts";
 import { listChats, onGroupMessage, onMembership } from "../_shared/uployal.ts";
 import {
@@ -131,6 +132,7 @@ async function onMessage(msg: any) {
     await db.from("users").update({ feedback_wait_at: null }).eq("tg_id", u.tg_id);
     await db.from("app_feedback").insert({ tg_id: u.tg_id, name: u.name, text: text || "(скриншот без тексту)" });
     await tg("sendMessage", { chat_id: chat, text: "Дякуємо! Зауваження збережено, ми його врахуємо.", reply_markup: FEEDBACK_KB });
+    await syncSheet().catch(console.error);
     const { data: owner } = await db.from("users").select("tg_id").eq("survey_set", "none").eq("role", "admin").order("created_at").limit(1).maybeSingle();
     if (owner && owner.tg_id !== u.tg_id) {
       await tg("sendMessage", { chat_id: owner.tg_id, parse_mode: "HTML", text: `💬 <b>Зауваження до апки</b> від ${esc(u.name)}` }).catch(console.error);
@@ -299,6 +301,7 @@ const DAY = 86400000;
 async function digest(): Promise<Record<string, unknown>> {
   const today = kyivToday();
   const reminded = await surveyReminders(today);
+  await syncSheet().catch(console.error);
   const { error: dup } = await db.from("bot_digests").insert({ day: today });
   if (dup) return { ok: true, sent: 0, reminded, reason: "already sent today" };
   const locs = await activeLocations();
@@ -396,6 +399,7 @@ Deno.serve(async (req) => {
     if (req.method === "GET") {
       if (new URL(req.url).searchParams.has("chats")) return Response.json(await listChats());
       if (new URL(req.url).searchParams.has("digest")) return Response.json(await digest());
+      if (new URL(req.url).searchParams.has("sheet")) return Response.json(await syncSheet());
       const key = new URL(req.url).searchParams.get("announce");
       if (key) return Response.json(await announce(key));
       return await setup(req);
