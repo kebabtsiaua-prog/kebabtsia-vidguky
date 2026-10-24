@@ -409,6 +409,97 @@ input.pick{font:inherit;font-size:13.5px;color:var(--fg)}
   .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
 }
 @media (prefers-reduced-motion:reduce){.shade,.drawer,.modal,.toast{transition:none}}
+/* ---------- team survey and tour before the cabinet opens ---------- */
+.sv{height:100vh;display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;padding:16px;max-width:1120px;margin:0 auto}
+.sv-side{padding:20px;display:flex;flex-direction:column;gap:12px;min-height:0;overflow:hidden}
+.sv-side .lh-l,.sv-side .lh-d{height:38px;width:auto}
+.sv-side h2{margin:4px 0 0;font-size:18px;font-weight:700;letter-spacing:-.01em;line-height:1.25}
+.sv-side p{margin:4px 0 0;font-size:13px;color:var(--fg2);line-height:1.5}
+.stps{display:flex;flex-direction:column;gap:2px;overflow:auto;min-height:0}
+.stp{display:flex;align-items:center;gap:10px;padding:5px 8px;border-radius:10px;font-size:13.5px;font-weight:500;color:var(--fg2);text-align:left}
+.stp .n{width:22px;height:22px;border-radius:50%;background:var(--card2);color:var(--hint);display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}
+.stp .n .i{width:13px;height:13px;stroke-width:2.6}
+.stp.ok .n{background:var(--good-soft);color:var(--good)}
+.stp.cur{background:var(--acc-soft);color:var(--fg);font-weight:700}
+.stp.cur .n{background:var(--acc);color:#fff}
+.sv-side .grow{flex:1}
+.sv-note{display:flex;gap:10px;align-items:flex-start;background:var(--card2);border-radius:12px;padding:10px 12px;font-size:12.5px;color:var(--fg2);line-height:1.45}
+.sv-note .i{width:16px;height:16px;color:var(--acc-fg);margin-top:1px;flex:none}
+.sv-main{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.sv-h{padding:18px 24px 0;display:flex;flex-direction:column;gap:10px}
+.sv-h .top{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--hint);font-weight:600}
+.sv-h .top b{color:var(--fg)}
+.sv-h .top .sp{flex:1}
+.lk-c{display:flex;align-items:center;gap:5px}.lk-c .i{width:14px;height:14px}
+.prog{height:6px;border-radius:3px;background:var(--card2);overflow:hidden}
+.prog i{display:block;height:100%;border-radius:3px;background:var(--acc);transition:width .2s}
+.sv-b{flex:1;overflow:auto;padding:18px 24px;display:flex;flex-direction:column;gap:14px}
+.sv-b h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1.25}
+.sv-f{display:flex;align-items:center;gap:10px;padding:14px 24px;border-top:1px solid var(--line)}
+.sv-f .sp{flex:1;font-size:12.5px;color:var(--hint)}
+.sv-ta{width:100%;min-height:150px;border:1.5px solid var(--line);border-radius:14px;padding:12px 14px;font:inherit;font-size:14px;line-height:1.5;background:var(--card);color:var(--fg);resize:vertical;outline:none}
+.sv-ta:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.cnt-l{display:flex;align-items:center;gap:10px;font-size:12.5px;font-weight:600;color:var(--warn);margin-top:-4px}
+.cnt-l .prog{width:120px;height:5px;flex:none}
+.cnt-l .prog i{background:var(--warn)}
+.cnt-l.ok{color:var(--good)}.cnt-l.ok .prog i{background:var(--good)}
+.cnt-l .i{width:14px;height:14px;stroke-width:2.6;margin-right:-4px}
+.tip{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;color:var(--hint);line-height:1.45;margin-top:auto;border-top:1px dashed var(--line);padding-top:12px}
+.tip .i{width:16px;height:16px;color:var(--acc-fg);margin-top:1px;flex:none}
+.ask{display:flex;gap:10px;align-items:flex-start;background:var(--acc-soft);border-radius:14px;padding:12px 14px;font-size:13.5px;line-height:1.45}
+.ask .i{width:18px;height:18px;color:var(--acc-fg);margin-top:1px;flex:none}
+.ask b{display:block;color:var(--acc-fg);font-size:12.5px;margin-bottom:2px}
+.ask small{display:block;color:var(--hint);font-size:12px;margin-top:4px}
+.btnk[disabled]{opacity:.4;pointer-events:none}
+.hero{display:flex;flex-direction:column;gap:10px}
+.hero .wave{width:44px;height:44px;border-radius:14px;background:var(--acc-soft);color:var(--acc-fg);display:grid;place-items:center}
+.hero .wave .i{width:22px;height:22px}
+.hero .wave.ok{background:var(--good-soft);color:var(--good)}
+.hero p{margin:0;font-size:14px;color:var(--fg2);line-height:1.55;max-width:600px}
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.facts>div{background:var(--card2);border-radius:12px;padding:11px 13px;min-width:0}
+.facts .l{font-size:11.5px;color:var(--hint);font-weight:600}
+.facts b{display:block;font-size:14px;margin-top:3px;line-height:1.3}
+.tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.tile{border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;gap:11px;align-items:flex-start}
+.tile .ic{width:34px;height:34px;border-radius:10px;background:var(--acc-soft);color:var(--acc-fg);display:grid;place-items:center;flex:none}
+.tile .ic .i{width:17px;height:17px}
+.tile>div{display:flex;flex-direction:column;gap:3px;min-width:0}
+.tile b{font-size:13.5px}.tile span{font-size:12.5px;color:var(--hint);line-height:1.4}
+.dots{display:flex;gap:5px}.dots i{width:18px;height:5px;border-radius:3px;background:var(--card2)}.dots i.on{background:var(--acc)}
+.tour-t{display:flex;gap:14px;align-items:flex-start}
+.tour-t .tic{width:44px;height:44px;border-radius:14px;background:var(--acc-soft);color:var(--acc-fg);display:grid;place-items:center;flex:none}
+.tour-t .tic .i{width:22px;height:22px}
+.tour-t p{margin:6px 0 0;font-size:14px;color:var(--fg2);line-height:1.55}
+.demo{flex:1;min-height:0;border-radius:16px;background:var(--card2);padding:16px;display:flex;flex-direction:column;justify-content:center;gap:8px;overflow:hidden}
+.dm{max-width:420px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:6px}
+.dm-m{background:var(--card);border-radius:14px;border-bottom-left-radius:4px;padding:8px 11px;font-size:13px;line-height:1.42;align-self:flex-start;max-width:90%;box-shadow:0 1px 1px rgba(0,0,0,.06)}
+.dm-m.out{align-self:flex-end;background:var(--acc);color:#fff;border-radius:14px;border-bottom-right-radius:4px}
+.dm-m b{display:block}
+.dm-k{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;width:90%}
+.dm-k span{background:var(--line);border-radius:9px;padding:6px;text-align:center;font-weight:600;font-size:12.5px}
+.dm-k span.w{grid-column:1/-1}
+.sv-top{display:none}
+@media (max-width:760px){
+  .sv{display:flex;flex-direction:column;height:100vh;padding:0;gap:0}
+  .sv-side{display:none}
+  .sv-top{display:flex;align-items:center;gap:10px;padding:12px 16px 10px}
+  .sv-top b{font-size:16px;font-weight:700;flex:1}
+  .sv-main{flex:1;border-radius:20px 20px 0 0;border-bottom:0}
+  .sv-h{padding:14px 16px 0}
+  .sv-h .top .lp,.lk-c{display:none}
+  .sv-b{padding:14px 16px}
+  .sv-b h1{font-size:19px}
+  .sv-ta{min-height:200px}
+  .sv-f{padding:10px 16px 18px}
+  .sv-f .btnk{flex:1}
+  .sv-f .sp{display:none}
+  .facts{grid-template-columns:1fr 1fr}.facts>div:last-child{grid-column:1/-1}
+  .tiles{grid-template-columns:1fr}
+  .tour-t{flex-direction:column;gap:10px}
+  .demo{padding:12px;justify-content:flex-start}
+  .cnt-l .prog{width:70px}
+}
 </style>
 </head>
 <body>
@@ -463,7 +554,13 @@ var ICONS={
  handshake:'<path d="M3 11l4-4 4 2 3-2 7 5-4 4"/><path d="M7 13l3 3 2-1 2 2 3-3"/>',
  users:'<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M16.5 14c2.2.2 3.6 1.7 4 4"/>',
  receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
- check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>'
+ check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+ lock:'<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
+ mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
+ pen:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+ bell:'<path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>',
+ send:'<path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/>',
+ star:'<path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.9l-5.3 2.7 1-5.8-4.2-4.1 5.9-.9z"/>'
 };
 function I(n){return '<svg class="i" viewBox="0 0 24 24" aria-hidden="true">'+(ICONS[n]||"")+'</svg>'}
 // channel → [badge background, inner svg (or OUR:★ / OUR:💬 for our own app), bar colour, border]
@@ -945,10 +1042,11 @@ function openMore(){
 function sendExport(btn){if(btn)busy(btn,true);api("export",{month:S.mk}).then(function(){toast("Файл надіслано вам у чат з ботом")}).catch(function(e){toast(e.message)}).then(function(){if(btn)busy(btn,false)})}
 function openSettings(){
   var body='<div><button class="li" data-s="users"><span class="ic">'+I("users")+'</span><span class="tx">Доступи<small>хто користується апкою, нові коди</small></span>'+I("right")+'</button>'+
+    '<button class="li" data-s="survey"><span class="ic">'+I("users")+'</span><span class="tx">Опитування команди<small>хто пройшов, відповіді, зауваження до апки</small></span>'+I("right")+'</button>'+
     '<button class="li" data-s="checks"><span class="ic">'+I("receipt")+'</span><span class="tx">Чеки за '+MNOM[5]+'<small>Poster підтягує щодня, тут можна виправити</small></span>'+I("right")+'</button>'+
     '<button class="li" data-s="locs"><span class="ic">'+I("pin")+'</span><span class="tx">Точки і їхні інші назви<small>щоб ШІ впізнавав точку на скриншоті</small></span>'+I("right")+'</button></div>'+
     '<div class="muted" style="font-size:12.5px">Бот: @'+esc(ME.bot)+'</div>';
-  openPanel({title:"Налаштування",narrow:true,body:body,mount:function(el){el.querySelector(".dr-b").addEventListener("click",function(e){var o=e.target.closest("[data-s]");if(!o)return;({users:openUsers,checks:openChecks,locs:openLocsAdmin})[o.dataset.s]()})}});
+  openPanel({title:"Налаштування",narrow:true,body:body,mount:function(el){el.querySelector(".dr-b").addEventListener("click",function(e){var o=e.target.closest("[data-s]");if(!o)return;({users:openUsers,survey:openSurveyTeam,checks:openChecks,locs:openLocsAdmin})[o.dataset.s]()})}});
 }
 function openUsers(){
   openPanel({title:"Доступи",body:'<div class="empty">Завантаження…</div>',mount:function(el){
@@ -1054,6 +1152,144 @@ if(TG&&TG.BackButton)TG.BackButton.onClick(function(){if(stack.length)closePanel
 var lastPhone=PHONE.matches;
 window.addEventListener("resize",function(){if(PHONE.matches!==lastPhone){lastPhone=PHONE.matches;if(ME&&D)render()}});
 
+// ================= team survey and tour (owner 2026-10-24) =================
+// Invited people answer their questions (open text, at least ME.survey.min characters), then go through a short tour
+// that cannot be skipped; only after that the cabinet opens. The server refuses everything else until then.
+var SVY=null;
+function svFirstGap(){var n=ME.survey.questions.length;for(var i=0;i<n;i++)if(!SVY.text[i])return i;return n-1}
+function surveyStart(){
+  var s=ME.survey;SVY={i:0,view:"intro",tour:0,ask:{},text:{},asked:{}};
+  s.answers.forEach(function(a){SVY.text[a.q]=a.answer;if(a.asked)SVY.asked[a.q]=1});
+  if(s.done)SVY.view="tour";else if(s.answers.length){SVY.view="q";SVY.i=svFirstGap()}
+  if(TG&&TG.BackButton)TG.BackButton.hide();
+  renderSurvey();
+}
+function svLogo(){return '<img class="lh-l" src="img/logo-h.png" alt="Кебабця"><img class="lh-d" src="img/logo-h-dark.png" alt="Кебабця">'}
+function svRoman(){return ME.survey.set==="roman"}
+function svFrame(steps,cur,head,body,foot,title,note){
+  return '<div class="sv"><aside class="card sv-side">'+svLogo()+'<div><h2>'+title+'</h2><p>'+note+'</p></div>'+
+  '<div class="stps">'+steps.map(function(t,k){var st=k<cur||(cur<0&&false)?"ok":k===cur?"cur":"";return '<button class="stp '+st+'" data-step="'+k+'"><span class="n">'+(k<cur?I("check"):k+1)+'</span>'+esc(t)+'</button>'}).join("")+'</div>'+
+  '<div class="grow"></div><div class="sv-note">'+I("lock")+'<div>Кабінет відкриється після опитування і короткої екскурсії. Можна закрити й продовжити пізніше.</div></div></aside>'+
+  '<div class="sv-top"><img class="mk" src="'+LOGO_M+'" width="32" height="32" alt="Кебабця"><b>'+title+'</b></div>'+
+  '<section class="card sv-main">'+head+'<div class="sv-b">'+body+'</div><div class="sv-f">'+foot+'</div></section></div>';
+}
+function svCount(len){var min=ME.survey.min,ok=len>=min;return '<span class="prog"><i style="width:'+Math.min(100,len/min*100)+'%"></i></span>'+(ok?I("check")+'Достатньо детально':'Ще мінімум '+(min-len)+' символів, напишіть детальніше')}
+function renderSurvey(){
+  var s=ME.survey,n=s.questions.length,v=SVY.view,first=esc(ME.user.name.trim().split(/\s+/)[0]);
+  var steps=s.questions.map(function(q){return q.t});
+  var title=v==="tour"?"Як працює апка":"Знайомство з апкою",note=v==="tour"?"Коротка екскурсія, її не можна пропустити.":svRoman()?"Ваші відповіді стануть правилами для команди.":"Розкажіть, як ви зараз працюєте зі скаргами.";
+  var html;
+  if(v==="intro"){
+    html=svFrame(steps,-1,"",
+      '<div class="hero"><div class="wave">'+I(svRoman()?"star":"users")+'</div>'+
+      (svRoman()?'<h1>'+first+', вітаємо в апці «Відгуки»</h1><p>Команда розповідатиме, як вона працює зі скаргами. Від вас нам потрібне інше: як це <b>має</b> працювати. Ваші відповіді стануть правилами: хто відповідає за скаргу, за який час її закривати і що доходить до вас. '+n+' питань, близько 10 хвилин.</p>'
+      :'<h1>Вітаємо, '+first+'!</h1><p>Ваш кабінет відкриється після короткого знайомства: '+n+' питань про те, як ви зараз працюєте зі скаргами. Пишіть своїми словами і детально, як розповідали б новенькому колезі. Правильних чи неправильних відповідей немає.</p>')+'</div>'+
+      '<div class="facts"><div><div class="l">Ваша роль</div><b>'+esc(ME.roles[ME.user.role]||"")+'</b></div><div><div class="l">Питань</div><b>'+n+' · ≈ 10 хвилин</b></div><div><div class="l">Хто бачить відповіді</div><b>'+(svRoman()?"Власник":"Власник і керівник")+'</b></div></div>'+
+      '<div class="lbl" style="margin:4px 0 -4px">Як це працює</div>'+
+      '<div class="tiles"><div class="tile"><span class="ic">'+I("pen")+'</span><div><b>Розгорнуті відповіді</b><span>Кожна відповідь хоча б 2–3 речення, без готових варіантів</span></div></div>'+
+      '<div class="tile"><span class="ic">'+I("spark")+'</span><div><b>Уточнення</b><span>Якщо відповідь загальна, апка попросить розповісти більше</span></div></div>'+
+      '<div class="tile"><span class="ic">'+I("bell")+'</span><div><b>Нагадування</b><span>Поки не закінчите, бот щоранку нагадає продовжити</span></div></div></div>',
+      '<span class="sp">'+n+' питань · ≈ 10 хвилин</span><button class="btnk btna" data-sv="begin">Почати'+I("right")+'</button>',title,note);
+  }else if(v==="q"){
+    var i=SVY.i,t=SVY.text[i]||"",len=t.trim().length,pct=Math.max(4,Math.round(i/n*100));
+    html=svFrame(steps,i,
+      '<div class="sv-h"><div class="top"><span>Питання <b>'+(i+1)+'</b> з '+n+'</span><span class="lp">· '+esc(s.questions[i].t)+'</span><span class="sp"></span><span class="lk-c">'+I("lock")+'Кабінет відкриється після опитування</span></div><div class="prog"><i style="width:'+pct+'%"></i></div></div>',
+      '<h1>'+esc(s.questions[i].q)+'</h1><textarea class="sv-ta" id="svText" placeholder="Напишіть своїми словами…">'+esc(t)+'</textarea>'+
+      '<div class="cnt-l'+(len>=s.min?" ok":"")+'" id="svCnt">'+svCount(len)+'</div>'+
+      (SVY.ask[i]?'<div class="ask">'+I("spark")+'<div><b>Уточніть, будь ласка</b>'+esc(SVY.ask[i])+'<small>Допишіть у полі вище і натисніть «Далі»</small></div></div>'
+      :'<div class="tip">'+I("mic")+'<div>Довго друкувати? Натисніть мікрофон на клавіатурі телефону й надиктуйте, текст зʼявиться сам.</div></div>'),
+      (i?'<button class="btn2" data-sv="prev">Назад</button>':'')+'<span class="sp">Відповідь зберігається, коли натискаєте «Далі»</span><button class="btnk btna" data-sv="next" id="svNext"'+(len<s.min?" disabled":"")+'>'+(i===n-1?"Завершити":"Далі")+I("right")+'</button>',title,note);
+  }else if(v==="done"){
+    html=svFrame(steps,n,"",
+      '<div class="hero"><div class="wave ok">'+I("check")+'</div><h1>Дякуємо, '+first+'! Відповіді збережено</h1><p>Лишився останній крок: коротка екскурсія по апці, 4 екрани, близько 2 хвилин. Її не можна пропустити, а після неї відкриється ваш кабінет.</p></div>'+
+      '<div class="sv-note">'+I("lock")+'<div>Якщо закриєте апку зараз, вона почнеться з екскурсії.</div></div>',
+      '<span class="sp">Відповіді можна буде доповнити пізніше</span><button class="btnk btna" data-sv="tour">До екскурсії'+I("right")+'</button>',title,note);
+  }else{
+    var T=svTour(),k=SVY.tour;
+    html=svFrame(T.map(function(x){return x[0]}),k,
+      '<div class="sv-h"><div class="top"><span>Крок <b>'+(k+1)+'</b> з '+T.length+'</span><span class="sp"></span><span class="dots">'+T.map(function(x,j){return '<i class="'+(j<=k?"on":"")+'"></i>'}).join("")+'</span></div></div>',
+      '<div class="tour-t"><span class="tic">'+I(T[k][1])+'</span><div><h1>'+T[k][2]+'</h1><p>'+T[k][3]+'</p></div></div><div class="demo">'+T[k][4]+'</div>',
+      (k?'<button class="btn2" data-sv="tback">Назад</button>':'')+'<span class="sp">Без пропуску · '+(k+1)+' з '+T.length+'</span><button class="btnk btna" data-sv="tnext">'+(k===T.length-1?"Почати роботу":"Далі")+I("right")+'</button>',title,note);
+  }
+  app.innerHTML=html;
+  var ta=document.getElementById("svText");
+  if(ta){ta.addEventListener("input",function(){SVY.text[SVY.i]=ta.value;var l=ta.value.trim().length,c=document.getElementById("svCnt");c.className="cnt-l"+(l>=ME.survey.min?" ok":"");c.innerHTML=svCount(l);document.getElementById("svNext").disabled=l<ME.survey.min});
+    if(!PHONE.matches)ta.focus()}
+}
+function svTour(){
+  var mine=isLocAdmin();
+  var chat='<div class="dm"><div class="dm-m out">Скриншот із Glovo, Bolt чи текст гостя</div><div class="dm-m"><b>✨ Перевірте скаргу</b>Точка: Кульпарківська<br>Канал: Glovo · Тема: Холодний<br>Усе вірно?</div><div class="dm-k"><span class="w">✓ Зберегти</span><span>Точка</span><span>Канал</span><span>Текст</span></div></div>';
+  var W='<div class="dm-m" style="max-width:100%;width:100%">';
+  var list='<div class="dm">'+W+'<b>'+(mine?"Скарги ваших точок":"Скарги")+' · чекають рішення</b>Найстаріші зверху. Червоним позначено ті, що чекають довше 3 днів.</div>'+W+'<b>🔴 Кульпарківська · Glovo · 4 дні</b>Привезли холодний кебаб, соус протік.</div>'+W+'<b>Сихів · Google · 1 день</b>Довго чекали замовлення, 40 хвилин.</div>'+W+'<b>Огляд і Точки</b>Скарги за місяць, теми, Google-рейтинг і скарги на 1000 чеків.</div></div>';
+  var hist='<div class="dm">'+W+'<b>Скарга · Glovo · 12:40</b>Привезли холодний кебаб, соус протік.</div>'+W+'<b>Рішення · 14:05</b>Подивились камери: замовлення чекало курʼєра 25 хв. Написали в підтримку Glovo, гроші повернули.</div>'+W+'<b>Результат · ✓ Вирішено</b>Гість задоволений, відповів у чаті.</div>'+W+'<b>Історія</b>Хто додав скаргу, хто і коли записав рішення, усе з часом.</div></div>';
+  var rem='<div class="dm"><div class="dm-m"><b>🔴 Нова скарга · Google</b>Довго чекали замовлення, 40 хвилин.</div><div class="dm-k"><span class="w">Відкрити скаргу</span></div><div class="dm-m"><b>☀️ Ранкова зведенка</b>2 скарги чекають рішення довше доби.</div><div class="dm-m out">💬 Зауваження до апки</div></div>';
+  return [
+    ["Як додати скаргу","send","Як додати скаргу за 10 секунд","Побачили скаргу? Перешліть боту скриншот або текст. Бот сам визначить точку, канал і тему, а ви перевірите й натиснете «Зберегти». Якщо щось не так, виправте кнопками.",chat],
+    [mine?"Скарги ваших точок":"Скарги і точки","inbox",mine?"Ви бачите тільки свої точки":"Усі скарги в одному місці",mine?"У списку «Скарги» лише точки, за які ви відповідаєте. Скарги інших точок вам не видно.":"«Скарги» показують, що чекає рішення. «Огляд» і «Точки» показують цифри за місяць по кожній точці.",list],
+    ["Рішення та історія","clock","Що зробили і чим скінчилось","Відкрийте скаргу, запишіть, що зробили, і позначте результат. Усе потрапляє в історію з часом, тож видно, хто і коли працював зі скаргою.",hist],
+    ["Нагадування і зауваження","bell","Бот нагадає, а ви можете підказати","Нові скарги приходять у бот одразу, а якщо скарга чекає довше доби, бот нагадає зранку. Якщо в апці щось незручно, натисніть у боті «Зауваження до апки» і напишіть, ми врахуємо.",rem]
+  ];
+}
+app.addEventListener("click",function(e){
+  if(!SVY)return;
+  var st=e.target.closest("[data-step]");
+  if(st&&SVY.view==="q"){var k=+st.dataset.step;if(k<=svFirstGap()){SVY.i=k;renderSurvey()}return}
+  var b=e.target.closest("[data-sv]");if(!b)return;
+  var a=b.dataset.sv,n=ME.survey.questions.length;
+  if(a==="begin"){SVY.view="q";SVY.i=svFirstGap();renderSurvey()}
+  else if(a==="prev"){SVY.i--;renderSurvey()}
+  else if(a==="tour"){SVY.view="tour";SVY.tour=0;renderSurvey()}
+  else if(a==="tback"){SVY.tour--;renderSurvey()}
+  else if(a==="tnext"){if(SVY.tour<svTour().length-1){SVY.tour++;renderSurvey();return}
+    busy(b,true);api("tour_done").then(function(){SVY=null;start()}).catch(function(x){busy(b,false);toast(x.message)})}
+  else if(a==="next"){
+    var i=SVY.i,t=(SVY.text[i]||"").trim();busy(b,true);
+    api("survey_save",{q:i,text:t}).then(function(r){
+      if(r.ask&&!SVY.asked[i]){SVY.asked[i]=1;SVY.ask[i]=r.ask;renderSurvey();return}
+      delete SVY.ask[i];SVY.asked[i]=1;
+      if(i<n-1){SVY.i=i+1;renderSurvey();return}
+      return api("survey_finish").then(function(){SVY.view="done";renderSurvey()});
+    }).catch(function(x){busy(b,false);toast(x.message)});
+  }
+});
+
+// ---- owner: who passed, their answers, invitations, remarks about the app ----
+function svStatus(p){
+  if(p.set==="none")return '<span class="muted" style="font-size:12.5px">Не проходить</span>';
+  if(p.done&&p.toured)return '<span class="pill done">Пройшли</span>';
+  if(p.done)return '<span class="pill open">Екскурсія</span>';
+  if(p.due)return p.answers.length?'<span class="pill open">'+p.answers.length+' з '+((SVT.sets[p.set]||{q:[]}).q.length)+'</span>':'<span class="pill late">Не почали</span>';
+  return '<span class="muted" style="font-size:12.5px">Не запрошено</span>';
+}
+var SVT=null;
+function openSurveyTeam(){
+  openPanel({title:"Опитування команди",body:'<div class="empty">Завантаження…</div>',mount:function(el){
+    var b=el.querySelector(".dr-b");
+    function draw(){api("survey_team").then(function(x){SVT=x;
+      var ppl=x.people.filter(function(p){return p.set!=="none"});
+      var done=ppl.filter(function(p){return p.done&&p.toured}).length,wait=ppl.filter(function(p){return !p.due});
+      var h='<div class="muted" style="font-size:13px">Пройшли '+done+' з '+ppl.length+'. Кабінет закривається тільки для запрошених, до кінця опитування й екскурсії. Бот нагадує щоранку.</div>';
+      if(wait.length)h+='<button class="btnk btna wide" id="svAll">'+I("send")+'Запросити всіх, хто ще не запрошений · '+wait.length+'</button>';
+      h+='<div class="sect">Команда · '+ppl.length+'</div><div>'+ppl.map(function(p){
+        return '<div class="li"><span class="ava">'+esc(initials(p.name))+'</span><span class="tx">'+esc(p.name)+'<small>'+esc((x.sets[p.set]||{}).who||"")+'</small></span>'+svStatus(p)+
+        (!p.due?'<button class="btn2" data-inv="'+p.tg_id+'" style="height:32px">Запросити</button>':p.answers.length?'<button class="btn2" data-ans="'+p.tg_id+'" style="height:32px">Відповіді</button>':'')+'</div>'}).join("")+'</div>';
+      h+='<div class="sect">Зауваження до апки · '+x.feedback.length+'</div>'+(x.feedback.length?x.feedback.map(function(f){return '<div class="li" style="align-items:flex-start"><span class="tx">'+esc(f.text)+'<small>'+esc(f.name)+' · '+esc(String(f.created_at).slice(0,16).replace("T"," "))+'</small></span></div>'}).join(""):'<div class="muted" style="font-size:13px">Поки немає. Їх надсилають у боті кнопкою «Зауваження до апки».</div>');
+      b.innerHTML=h;
+    }).catch(function(e){b.innerHTML='<div class="empty">'+esc(e.message)+'</div>'})}
+    b.addEventListener("click",function(e){var t=e.target;
+      var inv=t.closest("[data-inv]");if(inv){if(!confirm("Надіслати запрошення? Кабінет цієї людини закриється до кінця опитування."))return;busy(inv,true);api("survey_invite",{tg_ids:[+inv.dataset.inv]}).then(function(r){toast(r.sent?"Запрошення надіслано":"Не вдалося надіслати: людина ще не відкривала бота");draw()}).catch(function(x){busy(inv,false);toast(x.message)});return}
+      if(t.closest("#svAll")){var ids=SVT.people.filter(function(p){return p.set!=="none"&&!p.due}).map(function(p){return p.tg_id});if(!confirm("Надіслати запрошення "+ids.length+" людям? Їхні кабінети закриються до кінця опитування."))return;var bb=t.closest("#svAll");busy(bb,true);api("survey_invite",{tg_ids:ids}).then(function(r){toast("Надіслано: "+r.sent);draw()}).catch(function(x){busy(bb,false);toast(x.message)});return}
+      var an=t.closest("[data-ans]");if(an)openAnswers(+an.dataset.ans)});
+    draw();
+  }});
+}
+function openAnswers(id){
+  var p=SVT.people.filter(function(x){return x.tg_id===id})[0],qs=(SVT.sets[p.set]||{q:[]}).q;
+  var body=qs.map(function(q,i){var a=p.answers.filter(function(r){return r.q===i})[0];
+    return '<div><div class="lbl">'+(i+1)+'. '+esc(q.t)+'</div><div class="muted" style="font-size:12.5px;margin:-2px 0 6px">'+esc(q.q)+'</div>'+(a?'<div class="quote">'+esc(a.answer)+'</div>'+(a.asked?'<div class="muted" style="font-size:12px;margin-top:4px">Уточнення від ШІ: '+esc(a.asked)+'</div>':''):'<div class="muted" style="font-size:13px">Ще немає відповіді</div>')+'</div>'}).join("");
+  openPanel({title:p.name,body:body});
+}
+
 // ================= start =================
 function bare(html){app.innerHTML='<div style="max-width:420px;margin:0 auto;padding:48px 16px;display:flex;flex-direction:column;gap:16px;align-items:center;text-align:center"><img class="lh-l" src="img/logo-h.png" alt="Кебабця" style="height:56px"><img class="lh-d" src="img/logo-h-dark.png" alt="Кебабця" style="height:56px">'+html+'</div>'}
 function showError(e){
@@ -1069,6 +1305,7 @@ function start(){
   if(!TG||!TG.initData){bare('<div class="muted">Відкрийте апку через бота в Telegram: @kebabtsia_vidguky_bot, кнопка «Відгуки».</div>');return}
   bare('<div class="muted">Завантаження…</div>');
   api("me").then(function(me){ME=me;THEMES=me.topics;RESULTS=me.results;S.mk=me.today.slice(0,7);setWindow(S.mk);
+    if(me.survey&&me.survey.locked){surveyStart();return}
     if(isLocAdmin())S.tab="loc";
     // links from the bot: ?tab=queue opens the queue, ?item=123 opens that complaint
     var q=new URLSearchParams(location.search),tab=q.get("tab"),item=+q.get("item");

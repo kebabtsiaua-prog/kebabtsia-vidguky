@@ -55,6 +55,8 @@ jobs:
         run: |
           out=$(curl -sS "https://$PROJECT_REF.supabase.co/functions/v1/bot?announce=survey-roman")
           echo "::notice title=Announce::$out"
+          out=$(curl -sS "https://$PROJECT_REF.supabase.co/functions/v1/bot?announce=survey-start-roman")
+          echo "::notice title=Survey start::$out"
       - name: Google matches
         if: steps.check.outputs.ready == 'true'
         run: |
