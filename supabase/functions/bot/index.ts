@@ -340,7 +340,10 @@ async function digest(): Promise<Record<string, unknown>> {
 
 // GET ?announce=KEY, called by the deploy workflow: a one-off message to one person, found by first name.
 // Each key goes out once (bot_announcements); the reply carries counts only, because the deploy log is public.
-const ANNOUNCE: Record<string, { who: RegExp; text?: string; invite?: boolean }> = {
+const ANNOUNCE: Record<string, { who: RegExp; role?: string; text?: string; invite?: boolean }> = {
+  // Аня and Олена, the comms managers (owner 2026-10-24 18:27): their survey, then the tour.
+  "survey-start-anya": { who: /^(аня|анна|ганна|анюта|anya|anna|ania|hanna)(?![а-яіїєґa-z])/i, role: "comms", invite: true },
+  "survey-start-olena": { who: /^(олена|оленка|лена|olena|olenka|lena|elena)(?![а-яіїєґa-z])/i, role: "comms", invite: true },
   // The survey is live: Роман goes first (owner 2026-10-24). Opens his survey and sends the start button.
   "survey-start-roman": { who: /^(роман|roman)(?![а-яіїєґa-z])/i, invite: true },
   "survey-roman": {
@@ -361,9 +364,13 @@ async function announce(key: string): Promise<Record<string, unknown>> {
   if (!a) return { ok: false, reason: "unknown key" };
   const { data: done } = await db.from("bot_announcements").select("key").eq("key", key).maybeSingle();
   if (done) return { ok: true, key, sent: 0, reason: "already sent" };
-  const { data: users } = await db.from("users").select("tg_id,name").eq("active", true);
-  const to = (users ?? []).filter((u) => a.who.test(u.name.trim()));
-  if (to.length !== 1) return { ok: false, key, sent: 0, found: to.length, reason: "expected exactly one person" };
+  const { data: users } = await db.from("users").select("tg_id,name,role").eq("active", true);
+  const named = (users ?? []).filter((u) => a.who.test(u.name.trim()));
+  const to = named.filter((u) => !a.role || u.role === a.role);
+  if (to.length !== 1) {
+    // Roles only, never names: the deploy log is public.
+    return { ok: false, key, sent: 0, found: to.length, same_name_roles: named.map((u) => u.role), [`${a.role ?? "all"}_users`]: (users ?? []).filter((u) => !a.role || u.role === a.role).length, reason: "expected exactly one person" };
+  }
   if (a.invite) {
     const { data: x } = await db.from("users").select("*").eq("tg_id", to[0].tg_id).single();
     if (!x.survey_due_at) await db.from("users").update({ survey_due_at: new Date().toISOString() }).eq("tg_id", x.tg_id);
