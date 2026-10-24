@@ -8,6 +8,7 @@ import {
   savePhoto, tabUrl, tg, tgFile, type User, webhookSecret,
 } from "../_shared/common.ts";
 import { recipients } from "../_shared/uployal.ts";
+import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, setOf, type SurveyUser } from "../_shared/survey.ts";
 
 type Draft = {
   loc: number | null;
@@ -107,6 +108,7 @@ async function onMessage(msg: any) {
         "Усі скарги, аналітика і рішення в апці.",
       reply_markup: { inline_keyboard: [[openApp]] },
     });
+    await tg("sendMessage", { chat_id: chat, text: "Якщо маєте зауваження до апки, натисніть кнопку внизу.", reply_markup: FEEDBACK_KB });
     return;
   }
 
@@ -115,6 +117,33 @@ async function onMessage(msg: any) {
     await tg("sendMessage", joined
       ? { chat_id: chat, text: `Готово, доступ відкрито. Ваша роль: ${ROLES[joined.role]}. Надсилайте скриншоти скарг сюди.`, reply_markup: { inline_keyboard: [[openApp]] } }
       : { chat_id: chat, text: "Код не підходить. Попросіть новий код в адміністратора і надішліть його сюди." });
+    return;
+  }
+
+  // Remarks about the app: the button, then the next message (text or screenshot) within half an hour.
+  const su = u as SurveyUser & { feedback_wait_at: string | null };
+  if (text === FEEDBACK_BTN || text === "/feedback") {
+    await db.from("users").update({ feedback_wait_at: new Date().toISOString() }).eq("tg_id", u.tg_id);
+    await tg("sendMessage", { chat_id: chat, text: "Напишіть зауваження одним повідомленням: що незручно, що змінити, що додати. Можна прикласти скриншот.", reply_markup: FEEDBACK_KB });
+    return;
+  }
+  if (su.feedback_wait_at && Date.now() - Date.parse(su.feedback_wait_at) < 30 * 60000 && (text || msg.photo)) {
+    await db.from("users").update({ feedback_wait_at: null }).eq("tg_id", u.tg_id);
+    await db.from("app_feedback").insert({ tg_id: u.tg_id, name: u.name, text: text || "(скриншот без тексту)" });
+    await tg("sendMessage", { chat_id: chat, text: "Дякуємо! Зауваження збережено, ми його врахуємо.", reply_markup: FEEDBACK_KB });
+    const { data: owner } = await db.from("users").select("tg_id").eq("survey_set", "none").eq("role", "admin").order("created_at").limit(1).maybeSingle();
+    if (owner && owner.tg_id !== u.tg_id) {
+      await tg("sendMessage", { chat_id: owner.tg_id, parse_mode: "HTML", text: `💬 <b>Зауваження до апки</b> від ${esc(u.name)}` }).catch(console.error);
+      await tg("copyMessage", { chat_id: owner.tg_id, from_chat_id: chat, message_id: msg.message_id }).catch(console.error);
+    }
+    return;
+  }
+  // Survey not passed yet: complaints wait until the cabinet opens (owner 2026-10-24).
+  if (locked(su) && setOf(su) !== "none") {
+    await tg("sendMessage", {
+      chat_id: chat, text: "Спершу пройдіть коротке знайомство з апкою, після нього можна буде додавати скарги.",
+      reply_markup: { inline_keyboard: [[{ text: "Пройти опитування", web_app: { url: APP_URL } }]] },
+    });
     return;
   }
 
@@ -243,13 +272,35 @@ async function onCallback(cb: any) {
   await tg("answerCallbackQuery", { callback_query_id: cb.id });
 }
 
+// Everyone invited before today who has not finished the survey and the tour gets one reminder a day (owner 2026-10-24).
+async function surveyReminders(today: string): Promise<number> {
+  const { data: users } = await db.from("users").select("*").eq("active", true).not("survey_due_at", "is", null).lt("survey_due_at", today);
+  let n = 0;
+  for (const u of (users ?? []) as SurveyUser[]) {
+    if (!locked(u)) continue;
+    const { error: dup } = await db.from("survey_reminders").insert({ tg_id: u.tg_id, day: today });
+    if (dup) continue;
+    const { count } = await db.from("survey_answers").select("q", { count: "exact", head: true }).eq("tg_id", u.tg_id);
+    const text = u.survey_done_at ? "Лишилась коротка екскурсія по апці, 2 хвилини, і кабінет відкриється."
+      : count ? `Ви відповіли на ${count} питань. Відповіді збережені, продовжуйте з того ж місця, і кабінет відкриється.`
+      : "Ви ще не пройшли знайомство з апкою, тому кабінет закритий. Це близько 10 хвилин.";
+    const r = await tg("sendMessage", {
+      chat_id: u.tg_id, parse_mode: "HTML", text: `⏰ <b>Нагадування</b>\n\n${text}`,
+      reply_markup: { inline_keyboard: [[{ text: "Продовжити", web_app: { url: APP_URL } }]] },
+    }).catch(console.error);
+    if (r?.ok) n++;
+  }
+  return n;
+}
+
 // GET ?digest=1, every morning from the «Ранкова зведенка» workflow: what waits for a decision (anything older than a day
 // is listed, owner 2026-10-23) and where Google went down since the day before. Sent once a day, only when there is news.
 const DAY = 86400000;
 async function digest(): Promise<Record<string, unknown>> {
   const today = kyivToday();
+  const reminded = await surveyReminders(today);
   const { error: dup } = await db.from("bot_digests").insert({ day: today });
-  if (dup) return { ok: true, sent: 0, reason: "already sent today" };
+  if (dup) return { ok: true, sent: 0, reminded, reason: "already sent today" };
   const locs = await activeLocations();
   const name = (id: number) => (locs.find((l) => l.id === id)?.name ?? "").replace(/^Львів, /, "");
   const { data: open } = await db.from("complaints").select("id,location_id,channel,happened_on,created_at,source").eq("result", "");
@@ -267,7 +318,7 @@ async function digest(): Promise<Record<string, unknown>> {
     const s = (snaps ?? []).filter((x) => x.location_id === l.id && x.rating != null);
     if (s.length >= 2 && Number(s[0].rating) < Number(s[1].rating)) drops.push(`${esc(name(l.id))} ${String(s[1].rating).replace(".", ",")} → ${String(s[0].rating).replace(".", ",")}`);
   }
-  if (!old.length && !drops.length) return { ok: true, sent: 0, reason: "nothing to report" };
+  if (!old.length && !drops.length) return { ok: true, sent: 0, reminded, reason: "nothing to report" };
   const lines = ["☀️ <b>Ранкова зведенка</b>", ""];
   if (all.length) lines.push(`Чекають рішення: <b>${all.length}</b>${old.length ? `, з них довше доби: <b>${old.length}</b>` : ""}`);
   for (const c of old.slice(0, 8)) lines.push(`· ${esc(name(c.location_id))}, ${esc(c.channel)} · ${c.days} дн`);
@@ -281,12 +332,14 @@ async function digest(): Promise<Record<string, unknown>> {
     }).catch(console.error);
     if (r?.ok) sent++;
   }
-  return { ok: true, sent, waiting: all.length, older: old.length, drops: drops.length };
+  return { ok: true, sent, reminded, waiting: all.length, older: old.length, drops: drops.length };
 }
 
 // GET ?announce=KEY, called by the deploy workflow: a one-off message to one person, found by first name.
 // Each key goes out once (bot_announcements); the reply carries counts only, because the deploy log is public.
-const ANNOUNCE: Record<string, { who: RegExp; text: string }> = {
+const ANNOUNCE: Record<string, { who: RegExp; text?: string; invite?: boolean }> = {
+  // The survey is live: Роман goes first (owner 2026-10-24). Opens his survey and sends the start button.
+  "survey-start-roman": { who: /^(роман|roman)(?![а-яіїєґa-z])/i, invite: true },
   "survey-roman": {
     who: /^(роман|roman)(?![а-яіїєґa-z])/i,
     text: [
@@ -308,7 +361,16 @@ async function announce(key: string): Promise<Record<string, unknown>> {
   const { data: users } = await db.from("users").select("tg_id,name").eq("active", true);
   const to = (users ?? []).filter((u) => a.who.test(u.name.trim()));
   if (to.length !== 1) return { ok: false, key, sent: 0, found: to.length, reason: "expected exactly one person" };
-  const r = await tg("sendMessage", { chat_id: to[0].tg_id, parse_mode: "HTML", text: a.text });
+  if (a.invite) {
+    const { data: x } = await db.from("users").select("*").eq("tg_id", to[0].tg_id).single();
+    if (!x.survey_due_at) await db.from("users").update({ survey_due_at: new Date().toISOString() }).eq("tg_id", x.tg_id);
+  }
+  const r = a.invite
+    ? await tg("sendMessage", {
+      chat_id: to[0].tg_id, parse_mode: "HTML", text: inviteText((await getUser(to[0].tg_id)) as SurveyUser),
+      reply_markup: { inline_keyboard: [[{ text: "Почати", web_app: { url: APP_URL } }]] },
+    })
+    : await tg("sendMessage", { chat_id: to[0].tg_id, parse_mode: "HTML", text: a.text });
   if (!r?.ok) return { ok: false, key, sent: 0, reason: r?.description ?? "telegram error" };
   await db.from("bot_announcements").insert({ key, info: { message_id: r.result?.message_id } });
   return { ok: true, key, sent: 1 };
@@ -324,7 +386,7 @@ async function setup(req: Request): Promise<Response> {
     drop_pending_updates: false,
   });
   await tg("setChatMenuButton", { menu_button: { type: "web_app", text: "Відгуки", web_app: { url: APP_URL } } });
-  await tg("setMyCommands", { commands: [{ command: "start", description: "Почати / відкрити апку" }] });
+  await tg("setMyCommands", { commands: [{ command: "start", description: "Почати / відкрити апку" }, { command: "feedback", description: "Зауваження до апки" }] });
   await tg("setMyDescription", { description: "Скарги гостей Кебабці. Надішліть скриншот або текст відгуку, і бот додасть його в апку." });
   return Response.json({ ok: hook.ok, webhook: hook.description, host: url.host });
 }

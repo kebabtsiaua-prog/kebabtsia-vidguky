@@ -2,9 +2,10 @@
 import * as XLSX from "npm:xlsx@0.18.5";
 import { parseComplaint } from "../_shared/ai.ts";
 import {
-  activeLocations, bootstrapAdmin, channelsFor, CHANNELS, db, getUser, keywordTopics, kyivToday, newCode, redeemCode,
+  activeLocations, APP_URL, bootstrapAdmin, channelsFor, CHANNELS, db, getUser, keywordTopics, kyivToday, newCode, redeemCode,
   RESULTS, ROLES, savePhoto, telegramUser, tg, TOPICS, type User,
 } from "../_shared/common.ts";
+import { FEEDBACK_KB, followUp, inviteText, locked, MIN, SETS, setOf, type SurveyUser } from "../_shared/survey.ts";
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -130,11 +131,90 @@ async function exportMonth(u: User, month: string) {
   must((await res.json()).ok, "Не вдалося надіслати файл. Спершу відкрийте чат з ботом і натисніть «Старт».");
 }
 
+async function surveyState(u: SurveyUser) {
+  const set = setOf(u);
+  if (!u.survey_due_at || set === "none" || !SETS[set]) return { locked: false };
+  const { data: answers } = await db.from("survey_answers").select("q,answer,asked").eq("tg_id", u.tg_id);
+  return {
+    locked: locked(u), set, who: SETS[set].who, min: MIN, questions: SETS[set].q, answers: answers ?? [],
+    done: !!u.survey_done_at, toured: !!u.tour_done_at,
+  };
+}
+
 // deno-lint-ignore no-explicit-any
 async function handle(u: User, a: string, p: any): Promise<unknown> {
+  const su = u as SurveyUser;
+  // Until the survey and the tour are done, only they are open (owner 2026-10-24).
+  if (locked(su) && !["me", "survey_save", "survey_finish", "tour_done"].includes(a)) throw new Fail("Спершу пройдіть знайомство з апкою");
   switch (a) {
     case "me":
-      return { user: u, roles: ROLES, channels: channelsFor(u.role), allChannels: CHANNELS, topics: TOPICS, results: RESULTS, bot: await botUsername(), today: kyivToday() };
+      return { user: u, roles: ROLES, channels: channelsFor(u.role), allChannels: CHANNELS, topics: TOPICS, results: RESULTS, bot: await botUsername(), today: kyivToday(), survey: await surveyState(su) };
+
+    case "survey_save": {
+      const set = SETS[setOf(su)];
+      must(set, "Опитування для вас немає");
+      const q = Number(p.q);
+      must(Number.isInteger(q) && q >= 0 && q < set.q.length, "Невідоме питання");
+      const text = String(p.text ?? "").trim();
+      must(text.length >= MIN, `Напишіть детальніше, хоча б ${MIN} символів`);
+      const { data: was } = await db.from("survey_answers").select("asked").eq("tg_id", u.tg_id).eq("q", q).maybeSingle();
+      // One follow-up per question at most: once asked, the next save goes through.
+      const ask = was?.asked ? null : await followUp(set.q[q].q, text);
+      await db.from("survey_answers").upsert({ tg_id: u.tg_id, q, answer: text, asked: ask ?? was?.asked ?? null, updated_at: new Date().toISOString() });
+      return { ok: true, ask };
+    }
+    case "survey_finish": {
+      const set = SETS[setOf(su)];
+      must(set, "Опитування для вас немає");
+      const { count } = await db.from("survey_answers").select("q", { count: "exact", head: true }).eq("tg_id", u.tg_id);
+      must((count ?? 0) >= set.q.length, "Дайте відповідь на всі питання");
+      if (!su.survey_done_at) await db.from("users").update({ survey_done_at: new Date().toISOString() }).eq("tg_id", u.tg_id);
+      return { ok: true };
+    }
+    case "tour_done":
+      must(su.survey_done_at || !su.survey_due_at, "Спершу пройдіть опитування");
+      if (!su.tour_done_at) {
+        await db.from("users").update({ tour_done_at: new Date().toISOString() }).eq("tg_id", u.tg_id);
+        await tg("sendMessage", {
+          chat_id: u.tg_id, parse_mode: "HTML",
+          text: "✅ <b>Кабінет відкрито</b>\n\nДякуємо за відповіді! Скарги можна додавати просто тут: перешліть скриншот або текст.\n\nЯкщо є зауваження до апки, натисніть кнопку «Зауваження до апки» внизу.",
+          reply_markup: FEEDBACK_KB,
+        }).catch(console.error);
+      }
+      return { ok: true };
+
+    case "survey_team": {
+      must(u.role === "admin", "Немає доступу");
+      const { data: users } = await db.from("users").select("*").eq("active", true).order("created_at");
+      const { data: answers } = await db.from("survey_answers").select("tg_id,q,answer,asked,updated_at");
+      const { data: feedback } = await db.from("app_feedback").select("*").order("created_at", { ascending: false }).limit(100);
+      return {
+        sets: SETS,
+        people: (users ?? []).map((x: SurveyUser) => ({
+          tg_id: x.tg_id, name: x.name, role: x.role, location_id: x.location_id, set: setOf(x),
+          due: x.survey_due_at, done: x.survey_done_at, toured: x.tour_done_at,
+          answers: (answers ?? []).filter((r: { tg_id: number }) => r.tg_id === x.tg_id),
+        })),
+        feedback: feedback ?? [],
+      };
+    }
+    case "survey_invite": {
+      must(u.role === "admin", "Немає доступу");
+      const ids: number[] = (Array.isArray(p.tg_ids) ? p.tg_ids : []).map(Number).filter(Boolean);
+      must(ids.length, "Оберіть, кого запросити");
+      const { data: users } = await db.from("users").select("*").eq("active", true).in("tg_id", ids);
+      let sent = 0;
+      for (const x of (users ?? []) as SurveyUser[]) {
+        if (setOf(x) === "none" || x.survey_done_at) continue;
+        if (!x.survey_due_at) await db.from("users").update({ survey_due_at: new Date().toISOString() }).eq("tg_id", x.tg_id);
+        const r = await tg("sendMessage", {
+          chat_id: x.tg_id, parse_mode: "HTML", text: inviteText(x),
+          reply_markup: { inline_keyboard: [[{ text: "Пройти опитування", web_app: { url: APP_URL } }]] },
+        }).catch(console.error);
+        if (r?.ok) sent++;
+      }
+      return { ok: true, sent };
+    }
 
     case "data":
       return monthData(u, p.month);
