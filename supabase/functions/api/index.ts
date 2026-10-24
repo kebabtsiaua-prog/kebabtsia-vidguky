@@ -1,4 +1,5 @@
 // Mini-app backend. Every request: POST { initData, action, ...args }; the Telegram user is taken from initData.
+import { syncSheet } from "../_shared/sheet.ts";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { parseComplaint } from "../_shared/ai.ts";
 import {
@@ -169,6 +170,7 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
       const { count } = await db.from("survey_answers").select("q", { count: "exact", head: true }).eq("tg_id", u.tg_id);
       must((count ?? 0) >= set.q.length, "Дайте відповідь на всі питання");
       if (!su.survey_done_at) await db.from("users").update({ survey_done_at: new Date().toISOString() }).eq("tg_id", u.tg_id);
+      await syncSheet().catch(console.error);
       return { ok: true };
     }
     case "tour_done":
