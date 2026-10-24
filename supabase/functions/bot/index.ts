@@ -284,6 +284,36 @@ async function digest(): Promise<Record<string, unknown>> {
   return { ok: true, sent, waiting: all.length, older: old.length, drops: drops.length };
 }
 
+// GET ?announce=KEY, called by the deploy workflow: a one-off message to one person, found by first name.
+// Each key goes out once (bot_announcements); the reply carries counts only, because the deploy log is public.
+const ANNOUNCE: Record<string, { who: RegExp; text: string }> = {
+  "survey-roman": {
+    who: /^(роман|roman)(?![а-яіїєґa-z])/i,
+    text: [
+      "👥 <b>Опитування команди</b>",
+      "",
+      "Романе, вітаємо! Ми запускаємо в «Відгуках» коротке опитування для всіх, хто працює зі скаргами: адмінів точок, операторок, Ані й Олени. Поки людина його не пройде, її кабінет закритий.",
+      "",
+      "<b>Ви пройдете першим.</b> Ваші 6 питань не про те, як є зараз, а про те, як має бути: які скарги доходять до вас, хто відповідає за скаргу, за який час її закривати, хто може дати компенсацію. З ваших відповідей складемо правила для всієї команди.",
+      "",
+      "Після вас попросимо вас написати адмінам, щоб вони теж пройшли. Коли все буде готово, бот надішле вам кнопку «Почати».",
+    ].join("\n"),
+  },
+};
+async function announce(key: string): Promise<Record<string, unknown>> {
+  const a = ANNOUNCE[key];
+  if (!a) return { ok: false, reason: "unknown key" };
+  const { data: done } = await db.from("bot_announcements").select("key").eq("key", key).maybeSingle();
+  if (done) return { ok: true, key, sent: 0, reason: "already sent" };
+  const { data: users } = await db.from("users").select("tg_id,name").eq("active", true);
+  const to = (users ?? []).filter((u) => a.who.test(u.name.trim()));
+  if (to.length !== 1) return { ok: false, key, sent: 0, found: to.length, reason: "expected exactly one person" };
+  const r = await tg("sendMessage", { chat_id: to[0].tg_id, parse_mode: "HTML", text: a.text });
+  if (!r?.ok) return { ok: false, key, sent: 0, reason: r?.description ?? "telegram error" };
+  await db.from("bot_announcements").insert({ key, info: { message_id: r.result?.message_id } });
+  return { ok: true, key, sent: 1 };
+}
+
 async function setup(req: Request): Promise<Response> {
   const url = new URL(req.url);
   const self = `${Deno.env.get("SUPABASE_URL")}/functions/v1/bot`;
@@ -304,6 +334,8 @@ Deno.serve(async (req) => {
     if (req.method === "GET") {
       if (new URL(req.url).searchParams.has("chats")) return Response.json(await listChats());
       if (new URL(req.url).searchParams.has("digest")) return Response.json(await digest());
+      const key = new URL(req.url).searchParams.get("announce");
+      if (key) return Response.json(await announce(key));
       return await setup(req);
     }
     if (req.headers.get("x-telegram-bot-api-secret-token") !== await webhookSecret()) {
