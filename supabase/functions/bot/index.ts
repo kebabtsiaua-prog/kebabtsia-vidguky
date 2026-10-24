@@ -340,10 +340,11 @@ async function digest(): Promise<Record<string, unknown>> {
 
 // GET ?announce=KEY, called by the deploy workflow: a one-off message to one person, found by first name.
 // Each key goes out once (bot_announcements); the reply carries counts only, because the deploy log is public.
-const ANNOUNCE: Record<string, { who: RegExp; role?: string; text?: string; invite?: boolean }> = {
-  // Аня and Олена, the comms managers (owner 2026-10-24 18:27): their survey, then the tour.
-  "survey-start-anya": { who: /^(аня|анна|ганна|анюта|anya|anna|ania|hanna)(?![а-яіїєґa-z])/i, role: "comms", invite: true },
-  "survey-start-olena": { who: /^(олена|оленка|лена|olena|olenka|lena|elena)(?![а-яіїєґa-z])/i, role: "comms", invite: true },
+const ANNOUNCE: Record<string, { who: RegExp; roles?: string[]; set?: string; text?: string; invite?: boolean }> = {
+  // Аня and Олена, the comms managers (owner 2026-10-24 18:27): their survey, then the tour. They were added as
+  // administrators, so the comms question set is pinned with survey_set and their rights stay as they are.
+  "survey-start-anya": { who: /^(аня|анна|ганна|анюта|anya|anna|ania|hanna)(?![а-яіїєґa-z])/i, roles: ["comms", "admin"], set: "comm", invite: true },
+  "survey-start-olena": { who: /^(олена|оленка|лена|olena|olenka|lena|elena)(?![а-яіїєґa-z])/i, roles: ["comms", "admin"], set: "comm", invite: true },
   // The survey is live: Роман goes first (owner 2026-10-24). Opens his survey and sends the start button.
   "survey-start-roman": { who: /^(роман|roman)(?![а-яіїєґa-z])/i, invite: true },
   "survey-roman": {
@@ -366,14 +367,16 @@ async function announce(key: string): Promise<Record<string, unknown>> {
   if (done) return { ok: true, key, sent: 0, reason: "already sent" };
   const { data: users } = await db.from("users").select("tg_id,name,role").eq("active", true);
   const named = (users ?? []).filter((u) => a.who.test(u.name.trim()));
-  const to = named.filter((u) => !a.role || u.role === a.role);
+  const to = named.filter((u) => !a.roles || a.roles.includes(u.role));
   if (to.length !== 1) {
     // Roles only, never names: the deploy log is public.
-    return { ok: false, key, sent: 0, found: to.length, same_name_roles: named.map((u) => u.role), [`${a.role ?? "all"}_users`]: (users ?? []).filter((u) => !a.role || u.role === a.role).length, reason: "expected exactly one person" };
+    return { ok: false, key, sent: 0, found: to.length, same_name_roles: named.map((u) => u.role), reason: "expected exactly one person" };
   }
   if (a.invite) {
     const { data: x } = await db.from("users").select("*").eq("tg_id", to[0].tg_id).single();
-    if (!x.survey_due_at) await db.from("users").update({ survey_due_at: new Date().toISOString() }).eq("tg_id", x.tg_id);
+    if (!x.survey_due_at || (a.set && !x.survey_set)) {
+      await db.from("users").update({ survey_due_at: x.survey_due_at ?? new Date().toISOString(), ...(a.set && !x.survey_set ? { survey_set: a.set } : {}) }).eq("tg_id", x.tg_id);
+    }
   }
   const r = a.invite
     ? await tg("sendMessage", {
