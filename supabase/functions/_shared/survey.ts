@@ -1,7 +1,7 @@
 // Team survey before the cabinet opens (owner 2026-10-24): open answers only, at least MIN characters each,
 // a separate set of questions per role. Роман («roman» set) answers how it SHOULD work; everyone else how it works now.
 import Anthropic from "npm:@anthropic-ai/sdk@0.133.0";
-import type { User } from "./common.ts";
+import { db, type User } from "./common.ts";
 
 export const MIN = 120;
 
@@ -17,6 +17,8 @@ export const SETS: Record<string, { who: string; q: Question[] }> = {
     { t: "Записи", q: "Що з роботи над скаргами ви десь записуєте, а що лишається тільки в переписці чи в голові?" },
     { t: "Що заважає", q: "Що найбільше заважає працювати зі скаргами і що б ви змінили в першу чергу?" },
   ] },
+  // Tour only, no questions (Юра, the CEO, owner 2026-10-26).
+  tour: { who: "Керівник компанії", q: [] },
   oper: { who: "Операторки", q: [
     { t: "Звідки скарги", q: "Як до вас потрапляють скарги: дзвінки, сайт, чат? Скільки приблизно за тиждень і в які години найбільше?" },
     { t: "Дзвінок", q: "Опишіть, що ви робите, коли гість скаржиться по телефону, від першого слова до кінця розмови." },
@@ -65,6 +67,11 @@ export function inviteText(u: SurveyUser): string {
   const set = SETS[setOf(u)];
   const n = set?.q.length ?? 0;
   const first = u.name.trim().split(/\s+/)[0];
+  if (setOf(u) === "tour") {
+    return `👋 <b>Вітаємо у «Відгуках», ${first}!</b>\n\nТут в одному місці всі скарги та відгуки гостей з усіх точок Кебабці: Google, Glovo, Bolt, Instagram, Telegram, додаток і оператори. Видно, що чекає рішення, хто ним займається і чим закінчилось.\n\n` +
+      "Перед першим входом коротка екскурсія: 4 кроки, близько 2 хвилин. Після неї відкриється повний кабінет.\n\n" +
+      "Якщо щось варто змінити, напишіть тут, у чаті з ботом, кнопкою «Зауваження до апки».";
+  }
   if (setOf(u) === "roman") {
     return `👥 <b>Опитування команди</b>\n\n${first}, усе готово, можна починати. ${n} питань про те, як має працювати робота зі скаргами, близько 10 хвилин. Пишіть детально, своїми словами.\n\n` +
       "Після опитування буде коротка екскурсія по апці: як усе працює зараз. Якщо щось варто змінити, напишіть зауваження тут, у чаті з ботом, кнопкою «Зауваження до апки».";
@@ -105,5 +112,11 @@ export async function followUp(question: string, answer: string): Promise<string
 }
 
 // Remarks about the app go through the bot: this button sits under the message field.
+// The owner: the first administrator, who is never asked.
+export async function ownerId(): Promise<number | null> {
+  const { data } = await db.from("users").select("tg_id").eq("survey_set", "none").eq("role", "admin").order("created_at").limit(1).maybeSingle();
+  return data?.tg_id ?? null;
+}
+
 export const FEEDBACK_BTN = "💬 Зауваження до апки";
 export const FEEDBACK_KB = { keyboard: [[{ text: FEEDBACK_BTN }]], resize_keyboard: true, is_persistent: true };

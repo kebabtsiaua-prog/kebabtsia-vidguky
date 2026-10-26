@@ -6,7 +6,7 @@ import {
   activeLocations, APP_URL, bootstrapAdmin, channelsFor, CHANNELS, db, getUser, keywordTopics, kyivToday, newCode, redeemCode,
   RESULTS, ROLES, savePhoto, telegramUser, tg, TOPICS, type User,
 } from "../_shared/common.ts";
-import { FEEDBACK_KB, followUp, inviteText, locked, MIN, SETS, setOf, type SurveyUser } from "../_shared/survey.ts";
+import { FEEDBACK_KB, followUp, inviteText, locked, MIN, ownerId, SETS, setOf, type SurveyUser } from "../_shared/survey.ts";
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -183,6 +183,10 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
       must(su.survey_done_at || !su.survey_due_at, "Спершу пройдіть опитування");
       if (!su.tour_done_at) {
         await db.from("users").update({ tour_done_at: new Date().toISOString() }).eq("tg_id", u.tg_id);
+        const owner = await ownerId();
+        if (owner && owner !== u.tg_id && setOf(su) === "tour") {
+          await tg("sendMessage", { chat_id: owner, text: `✅ ${u.name} пройшов екскурсію, кабінет відкрито.` }).catch(console.error);
+        }
         await tg("sendMessage", {
           chat_id: u.tg_id, parse_mode: "HTML",
           text: "✅ <b>Кабінет відкрито</b>\n\nДякуємо за відповіді! Скарги можна додавати просто тут: перешліть скриншот або текст.\n\nЯкщо є зауваження до апки, натисніть кнопку «Зауваження до апки» внизу.",

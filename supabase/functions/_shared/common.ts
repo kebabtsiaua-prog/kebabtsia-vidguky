@@ -159,6 +159,8 @@ export async function redeemCode(code: string, from: { id: number; first_name?: 
     role: inv.role,
     location_id: inv.location_id,
     active: true,
+    // A tour-only invite (survey_set 'tour'): no questions, the cabinet opens after the tour.
+    ...(inv.survey_set === "tour" ? { survey_set: "tour", survey_due_at: new Date().toISOString(), survey_done_at: new Date().toISOString(), morning_report: true } : {}),
   };
   const { data } = await db.from("users").upsert(row).select().single();
   return data as User;
