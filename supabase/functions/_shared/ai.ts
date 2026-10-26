@@ -40,12 +40,38 @@ ${locs}
 Підказки щодо каналу: повідомлення Uployal з «Оцінка замовлення» = «Оцінки в додатку»; інтерфейс Glovo жовто-зелений; Bolt зелений; Google Maps показує зірки і «Local Guide».`;
 }
 
+// The location named in the text itself, when exactly one location fits («доставка на валову» → Валова 13).
+// A stem is a word of the name or a nickname without its ending (at most 6 letters); stems that are also everyday
+// words are skipped, and a word that fits several locations (Шевченка, Львів) decides nothing.
+// The text wins over the AI: it once filed «доставка на валову» under Буковель.
+const COMMON = new Set(["широк", "червон", "пустом", "дубо", "сотн", "іван", "бульва", "вулиц", "площ"]);
+export function locationInText(locations: Location[], text: string): number | null {
+  const t = text.toLowerCase().replace(/[’ʼ']/g, "");
+  const fits = locations.filter((l) => {
+    const words = [l.name, ...l.aliases].join(" ").toLowerCase().replace(/[’ʼ']/g, "").match(/[a-zа-яіїєґ]{5,}/g) ?? [];
+    return words.map((w) => w.slice(0, Math.min(w.length - 1, 6))).some((st) =>
+      !COMMON.has(st) && new RegExp(`(^|[^a-zа-яіїєґ])${st}`).test(t)
+    );
+  });
+  return fits.length === 1 ? fits[0].id : null;
+}
+
+// Text without a screenshot names its channel in words, or the channel stays for the person to pick.
+const CHANNEL_WORDS: [string, RegExp][] = [
+  ["Google", /google|гугл/i], ["Glovo", /glovo|глово/i], ["Bolt", /bolt|болт/i], ["Instagram", /insta|інст/i],
+  ["Telegram", /telegram|телеграм|(^|[^а-яіїєґa-z])тг([^а-яіїєґa-z]|$)/i], ["Threads", /threads|тредс/i], ["Оператори", /оператор|дзвон|дзвін/i],
+  ["Сайт", /сайт/i], ["Оцінки в додатку", /оцінк|uployal/i], ["Підтримка в додатку", /підтримк|додат/i],
+];
+function channelNamed(text: string, channel: string | null): boolean {
+  return !!channel && (CHANNEL_WORDS.find(([c]) => c === channel)?.[1].test(text) ?? false);
+}
+
 export async function parseComplaint(
   locations: Location[],
   input: { text?: string; image?: { data: string; mime: string } },
 ): Promise<Parsed> {
   const fallback: Parsed = {
-    location_id: null,
+    location_id: locationInText(locations, input.text ?? ""),
     channel: null,
     text: input.text?.trim() ?? "",
     date: null,
@@ -82,9 +108,10 @@ export async function parseComplaint(
     if (!block || block.type !== "text") return fallback;
     const out = JSON.parse(block.text);
     const loc = locations.find((l) => l.name === out.location);
+    const channel = CHANNELS.includes(out.channel) ? out.channel : null;
     return {
-      location_id: loc?.id ?? null,
-      channel: CHANNELS.includes(out.channel) ? out.channel : null,
+      location_id: locationInText(locations, input.text ?? "") ?? loc?.id ?? null,
+      channel: input.image || channelNamed(input.text ?? "", channel) ? channel : null,
       text: String(out.text || fallback.text).trim(),
       date: /^\d{4}-\d{2}-\d{2}$/.test(out.date ?? "") && out.date <= kyivToday() ? out.date : null,
       topics: (out.topics ?? []).filter((t: string) => TOPICS.includes(t)),
