@@ -9,7 +9,7 @@ import {
   savePhoto, tabUrl, tg, tgFile, type User, webhookSecret,
 } from "../_shared/common.ts";
 import { recipients } from "../_shared/uployal.ts";
-import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, setOf, type SurveyUser } from "../_shared/survey.ts";
+import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, ownerId, setOf, type SurveyUser } from "../_shared/survey.ts";
 
 type Draft = {
   loc: number | null;
@@ -25,6 +25,11 @@ type Draft = {
 
 const PAGE = 10;
 const openApp = { text: "📊 Відкрити апку", web_app: { url: APP_URL } };
+const startBtn = (u: SurveyUser) => ({ text: setOf(u) === "tour" ? "Почати екскурсію" : "Почати", web_app: { url: APP_URL } });
+async function tellOwner(text: string, about: number) {
+  const id = await ownerId();
+  if (id && id !== about) await tg("sendMessage", { chat_id: id, parse_mode: "HTML", text }).catch(console.error);
+}
 
 function esc(s: string): string {
   return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
@@ -99,6 +104,13 @@ async function onMessage(msg: any) {
     if (!u && code) u = await redeemCode(code, from);
     if (!u) {
       await tg("sendMessage", { chat_id: chat, text: "Вітаю! Щоб користуватися ботом, потрібен код доступу. Попросіть його в адміністратора і надішліть сюди." });
+      return;
+    }
+    const su = u as SurveyUser;
+    if (locked(su)) {
+      await tg("sendMessage", { chat_id: chat, parse_mode: "HTML", text: inviteText(su), reply_markup: { inline_keyboard: [[startBtn(su)]] } });
+      await tg("sendMessage", { chat_id: chat, text: "Якщо маєте зауваження до апки, натисніть кнопку внизу.", reply_markup: FEEDBACK_KB });
+      if (code && setOf(su) === "tour") await tellOwner(`👋 ${esc(u.name)} відкрив бота й отримав привітання та екскурсію.`, u.tg_id);
       return;
     }
     await tg("sendMessage", {
@@ -298,12 +310,75 @@ async function surveyReminders(today: string): Promise<number> {
 // GET ?digest=1, every morning from the «Ранкова зведенка» workflow: what waits for a decision (anything older than a day
 // is listed, owner 2026-10-23) and where Google went down since the day before. Sent once a day, only when there is news.
 const DAY = 86400000;
+// Morning report for the people who lead the company (users.morning_report, owner 2026-10-26): yesterday at a glance,
+// sent every day even when it was quiet, once per person per day.
+async function morningReport(today: string): Promise<number> {
+  const { data: to } = await db.from("users").select("tg_id").eq("active", true).eq("morning_report", true);
+  if (!to?.length) return 0;
+  const day = (n: number) => new Date(Date.parse(today) - n * DAY).toISOString().slice(0, 10);
+  const y = day(1);
+  const locs = await activeLocations();
+  const name = (id: number) => (locs.find((l) => l.id === id)?.name ?? "").replace(/^Львів, /, "");
+  const ua = (n: number, d = 1) => n.toFixed(d).replace(".", ",");
+  const top = (xs: string[], k: number) => {
+    const m = new Map<string, number>();
+    for (const x of xs) m.set(x, (m.get(x) ?? 0) + 1);
+    return [...m].sort((a, b) => b[1] - a[1]).slice(0, k).map(([x, n]) => `${esc(x)} ${n}`).join(", ");
+  };
+  const { data: fresh } = await db.from("complaints").select("location_id,channel").eq("happened_on", y);
+  const { data: recent } = await db.from("complaints").select("resolved_at").gte("resolved_at", `${day(2)}T00:00:00Z`);
+  const kyivDay = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv" }).format(new Date(iso));
+  const solved = (recent ?? []).filter((c) => kyivDay(c.resolved_at) === y).length;
+  const { data: openAll } = await db.from("complaints").select("location_id,happened_on").eq("result", "");
+  const open = (openAll ?? []).filter((c) => locs.some((l) => l.id === c.location_id));
+  const late = open.filter((c) => c.happened_on <= day(3)).length;
+  const { data: rates } = await db.from("app_ratings").select("rating").eq("rated_on", y);
+  const { data: snaps } = await db.from("google_daily").select("location_id,day,rating").gte("day", day(2)).order("day", { ascending: false });
+  const month = y.slice(0, 8) + "01", prev = new Date(Date.parse(month) - DAY).toISOString().slice(0, 8) + "01";
+  const prevSame = new Date(Date.parse(prev) + (Date.parse(y) - Date.parse(month))).toISOString().slice(0, 10);
+  const { count: mtd } = await db.from("complaints").select("id", { count: "exact", head: true }).gte("happened_on", month).lte("happened_on", y);
+  const { count: prevMtd } = await db.from("complaints").select("id", { count: "exact", head: true }).gte("happened_on", prev).lte("happened_on", prevSame);
+
+  const f = fresh ?? [];
+  const lines = [`☀️ <b>Відгуки за вчора, ${y.slice(8)}.${y.slice(5, 7)}</b>`, ""];
+  lines.push(f.length ? `Нових скарг: <b>${f.length}</b> (${top(f.map((c) => c.channel), 4)})` : "Нових скарг: <b>0</b>");
+  if (f.length) lines.push(`Найбільше: ${top(f.map((c) => name(c.location_id)), 3)}`);
+  lines.push(`Вирішено за вчора: <b>${solved}</b>`);
+  lines.push(`Чекають рішення: <b>${open.length}</b>${late ? `, з них довше 3 днів: <b>${late}</b>` : ""}`);
+  const r = (rates ?? []).map((x) => x.rating);
+  if (r.length) {
+    const low = r.filter((x) => x <= 2).length;
+    lines.push(`Оцінки в додатку: ${r.length}, середня <b>${ua(r.reduce((a, b) => a + b, 0) / r.length)}</b>${low ? `, низьких (1–2★): ${low}` : ""}`);
+  }
+  const g = (d: string) => (snaps ?? []).filter((s) => s.day === d && s.rating != null).map((s) => Number(s.rating));
+  const gNow = g(today).length ? g(today) : g(y), gThen = g(today).length ? g(y) : g(day(2));
+  if (gNow.length) {
+    const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const diff = gThen.length ? avg(gNow) - avg(gThen) : 0;
+    lines.push(`Google, середній по мережі: <b>${ua(avg(gNow), 2)}</b>${Math.abs(diff) >= 0.005 ? ` (${diff > 0 ? "+" : "−"}${ua(Math.abs(diff), 2)} за добу)` : ""}`);
+  }
+  lines.push("", `З початку місяця скарг: <b>${mtd ?? 0}</b>${prevMtd != null ? ` (минулого місяця за ті ж дні: ${prevMtd})` : ""}`);
+
+  let sent = 0;
+  for (const u of to) {
+    const { error: dup } = await db.from("morning_reports").insert({ tg_id: u.tg_id, day: today });
+    if (dup) continue;
+    const res = await tg("sendMessage", {
+      chat_id: u.tg_id, parse_mode: "HTML", text: lines.join("\n"),
+      reply_markup: { inline_keyboard: [[{ text: "📊 Відкрити апку", web_app: { url: APP_URL } }]] },
+    }).catch(console.error);
+    if (res?.ok) sent++;
+  }
+  return sent;
+}
+
 async function digest(): Promise<Record<string, unknown>> {
   const today = kyivToday();
   const reminded = await surveyReminders(today);
+  const reported = await morningReport(today).catch((e) => (console.error(e), 0));
   await syncSheet().catch(console.error);
   const { error: dup } = await db.from("bot_digests").insert({ day: today });
-  if (dup) return { ok: true, sent: 0, reminded, reason: "already sent today" };
+  if (dup) return { ok: true, sent: 0, reminded, reported, reason: "already sent today" };
   const locs = await activeLocations();
   const name = (id: number) => (locs.find((l) => l.id === id)?.name ?? "").replace(/^Львів, /, "");
   const { data: open } = await db.from("complaints").select("id,location_id,channel,happened_on,created_at,source").eq("result", "");
@@ -321,7 +396,7 @@ async function digest(): Promise<Record<string, unknown>> {
     const s = (snaps ?? []).filter((x) => x.location_id === l.id && x.rating != null);
     if (s.length >= 2 && Number(s[0].rating) < Number(s[1].rating)) drops.push(`${esc(name(l.id))} ${String(s[1].rating).replace(".", ",")} → ${String(s[0].rating).replace(".", ",")}`);
   }
-  if (!old.length && !drops.length) return { ok: true, sent: 0, reminded, reason: "nothing to report" };
+  if (!old.length && !drops.length) return { ok: true, sent: 0, reminded, reported, reason: "nothing to report" };
   const lines = ["☀️ <b>Ранкова зведенка</b>", ""];
   if (all.length) lines.push(`Чекають рішення: <b>${all.length}</b>${old.length ? `, з них довше доби: <b>${old.length}</b>` : ""}`);
   for (const c of old.slice(0, 8)) lines.push(`· ${esc(name(c.location_id))}, ${esc(c.channel)} · ${c.days} дн`);
@@ -335,7 +410,7 @@ async function digest(): Promise<Record<string, unknown>> {
     }).catch(console.error);
     if (r?.ok) sent++;
   }
-  return { ok: true, sent, reminded, waiting: all.length, older: old.length, drops: drops.length };
+  return { ok: true, sent, reminded, reported, waiting: all.length, older: old.length, drops: drops.length };
 }
 
 // GET ?announce=KEY, called by the deploy workflow: a one-off message to one person, found by first name.
@@ -345,6 +420,8 @@ const ANNOUNCE: Record<string, { who: RegExp; roles?: string[]; set?: string; te
   // administrators, so the comms question set is pinned with survey_set and their rights stay as they are.
   "survey-start-anya": { who: /^(аня|анна|ганна|анюта|anya|anna|ania|hanna)(?![а-яіїєґa-z])/i, roles: ["comms", "admin"], set: "comm", invite: true },
   "survey-start-olena": { who: /^(олена|оленка|лена|olena|olenka|lena|elena)(?![а-яіїєґa-z])/i, roles: ["comms", "admin"], set: "comm", invite: true },
+  // Юра, the CEO (owner 2026-10-26): a welcome and the tour, no questions. He had already signed up when this was built.
+  "tour-start-yura": { who: /^(юра|юрій|юрко|yura|yurii|yuriy)(?![а-яіїєґa-z])/i, set: "tour", invite: true },
   // The survey is live: Роман goes first (owner 2026-10-24). Opens his survey and sends the start button.
   "survey-start-roman": { who: /^(роман|roman)(?![а-яіїєґa-z])/i, invite: true },
   "survey-roman": {
@@ -375,17 +452,18 @@ async function announce(key: string): Promise<Record<string, unknown>> {
   if (a.invite) {
     const { data: x } = await db.from("users").select("*").eq("tg_id", to[0].tg_id).single();
     if (!x.survey_due_at || (a.set && !x.survey_set)) {
-      await db.from("users").update({ survey_due_at: x.survey_due_at ?? new Date().toISOString(), ...(a.set && !x.survey_set ? { survey_set: a.set } : {}) }).eq("tg_id", x.tg_id);
+      await db.from("users").update({ survey_due_at: x.survey_due_at ?? new Date().toISOString(), ...(a.set && !x.survey_set ? { survey_set: a.set } : {}), ...(a.set === "tour" && !x.survey_done_at ? { survey_done_at: new Date().toISOString() } : {}) }).eq("tg_id", x.tg_id);
     }
   }
   const r = a.invite
     ? await tg("sendMessage", {
       chat_id: to[0].tg_id, parse_mode: "HTML", text: inviteText((await getUser(to[0].tg_id)) as SurveyUser),
-      reply_markup: { inline_keyboard: [[{ text: "Почати", web_app: { url: APP_URL } }]] },
+      reply_markup: { inline_keyboard: [[startBtn((await getUser(to[0].tg_id)) as SurveyUser)]] },
     })
     : await tg("sendMessage", { chat_id: to[0].tg_id, parse_mode: "HTML", text: a.text });
   if (!r?.ok) return { ok: false, key, sent: 0, reason: r?.description ?? "telegram error" };
   await db.from("bot_announcements").insert({ key, info: { message_id: r.result?.message_id } });
+  if (a.set === "tour") await tellOwner(`👋 ${esc(to[0].name)} отримав привітання й кнопку екскурсії.`, to[0].tg_id);
   return { ok: true, key, sent: 1 };
 }
 
@@ -410,6 +488,7 @@ Deno.serve(async (req) => {
       if (new URL(req.url).searchParams.has("chats")) return Response.json(await listChats());
       if (new URL(req.url).searchParams.has("digest")) return Response.json(await digest());
       if (new URL(req.url).searchParams.has("sheet")) return Response.json(await syncSheet());
+      if (new URL(req.url).searchParams.has("report")) return Response.json({ ok: true, reported: await morningReport(kyivToday()) });
       const key = new URL(req.url).searchParams.get("announce");
       if (key) return Response.json(await announce(key));
       return await setup(req);
