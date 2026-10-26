@@ -425,6 +425,8 @@ input.pick{font:inherit;font-size:13.5px;color:var(--fg)}
 .sv-side .grow{flex:1}
 .sv-note{display:flex;gap:10px;align-items:flex-start;background:var(--card2);border-radius:12px;padding:10px 12px;font-size:12.5px;color:var(--fg2);line-height:1.45}
 .sv-note .i{width:16px;height:16px;color:var(--acc-fg);margin-top:1px;flex:none}
+/* short laptop windows: eight steps need the room more than the lock note, which the question header repeats */
+@media(max-height:620px) and (min-width:761px){.sv-side .sv-note{display:none}}
 .sv-main{display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .sv-h{padding:18px 24px 0;display:flex;flex-direction:column;gap:10px}
 .sv-h .top{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--hint);font-weight:600}
@@ -500,6 +502,23 @@ input.pick{font:inherit;font-size:13.5px;color:var(--fg)}
   .demo{padding:12px;justify-content:flex-start}
   .cnt-l .prog{width:70px}
 }
+.row2{display:flex;gap:8px;flex-wrap:wrap}.row2>*{flex:1 1 180px}
+/* admins pick their own locations (shared link) */
+.pk-top{display:flex;align-items:flex-end;gap:12px}
+.pk-top .sp{flex:1}
+.pk-n{font-size:12.5px;color:var(--hint);white-space:nowrap}.pk-n b{color:var(--fg)}
+.pk-city{font-size:11.5px;font-weight:600;color:var(--hint);text-transform:uppercase;letter-spacing:.05em;margin:4px 0 -4px}
+.pk-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.pk{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--fg);text-align:left;min-width:0;font:inherit;cursor:pointer}
+.pk .bx{width:18px;height:18px;border-radius:6px;border:1.5px solid var(--line);flex:none;display:grid;place-items:center;color:#fff}
+.pk .bx .i{width:12px;height:12px}
+.pk span.t{min-width:0}
+.pk b{display:block;font-weight:600;font-size:13.5px;line-height:1.25;overflow-wrap:anywhere}
+.pk small{display:block;color:var(--hint);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pk.on{border-color:var(--acc);background:var(--acc-soft)}.pk.on .bx{background:var(--acc);border-color:var(--acc)}
+.pk:disabled{opacity:.45;cursor:default}
+.pk-sum{display:flex;flex-wrap:wrap;gap:6px}.pk-sum span{background:var(--acc-soft);color:var(--acc-fg);border-radius:999px;padding:5px 11px;font-size:13px;font-weight:600}
+@media(max-width:760px){.pk-grid{grid-template-columns:1fr 1fr}.pk{padding:9px 10px}}
 </style>
 </head>
 <body>
@@ -588,6 +607,8 @@ function setWindow(mk){MK=[];for(var i=5;i>=0;i--)MK.push(shiftMk(mk,-i));MNOM=M
 function isStaff(){return ME&&(ME.user.role==="admin"||ME.user.role==="comms")}
 function isAdmin(){return ME&&ME.user.role==="admin"}
 function isLocAdmin(){return ME&&ME.user.role==="loc_admin"}
+// A location admin with one location gets that location's page; with several, a list of their locations.
+function oneLoc(){return isLocAdmin()&&LOCS.length===1}
 var PHONE=window.matchMedia("(max-width:760px)");
 
 function loadMonth(){
@@ -707,14 +728,15 @@ function oldestFirst(a,b){return age(b)-age(a)||a.id-b.id}
 
 // ================= page frame =================
 function tabsFor(){
-  if(isLocAdmin())return [["loc","Точка","pin"],["queue","Скарги","inbox"]];
+  if(oneLoc())return [["loc","Точка","pin"],["queue","Скарги","inbox"]];
+  if(isLocAdmin())return [["locs","Мої точки","pin"],["queue","Скарги","inbox"]];
   var t=[["home","Огляд","grid"],["queue","Скарги","inbox"],["locs","Точки","pin"]];
   if(isStaff())t.push(["collab","Співпраці","handshake"]);
   return t;
 }
 function openCount(){return inM(5).filter(isOpen).length}
 function side(){
-  var on=S.loc&&!isLocAdmin()?"locs":S.tab,n=openCount();
+  var on=S.loc&&!oneLoc()?"locs":S.tab,n=openCount();
   return '<aside class="side"><div class="brand"><img class="lh-l" src="img/logo-h.png" alt="Кебабця"><img class="lh-d" src="img/logo-h-dark.png" alt="Кебабця"><span>Скарги гостей</span></div>'+
   '<button class="new" data-add>'+I("plus")+'Нова скарга</button>'+
   tabsFor().map(function(x){return '<button class="nv'+(x[0]===on?" on":"")+'" data-tab="'+x[0]+'">'+I(x[2])+x[1]+(x[0]==="queue"&&n?'<span class="cnt">'+n+'</span>':"")+'</button>'}).join("")+
@@ -722,7 +744,7 @@ function side(){
   '<div class="me"><div class="ava">'+esc(initials(ME.user.name))+'</div><div><b>'+esc(ME.user.name)+'</b><span>'+esc(ME.roles[ME.user.role]||"")+'</span></div></div></aside>';
 }
 function tabbar(){
-  var t=tabsFor(),on=S.loc&&!isLocAdmin()?"locs":S.tab,n=openCount();
+  var t=tabsFor(),on=S.loc&&!oneLoc()?"locs":S.tab,n=openCount();
   var it=t.slice(0,2).concat([["add"]]).concat(t.length>2?[t[2]]:[]).concat([["more","Ще","more"]]);
   return '<nav class="tabbar ph-only" style="grid-template-columns:repeat('+it.length+',1fr)">'+it.map(function(x){
     if(x[0]==="add")return '<button data-add aria-label="Нова скарга"><span class="plus">'+I("plus")+'</span></button>';
@@ -791,7 +813,7 @@ function renderQueue(){
   var today=items.filter(function(r){return kyivDay(r.created)===ME.today}),tch=Object.keys(count(today,function(r){return r.ch}));
   var wk=items.filter(function(r){return r.resolved&&daysBetween(kyivDay(r.resolved),ME.today)<7}),wkw=count(wk.filter(function(r){return r.who}),function(r){return r.who});
   var sd=solveDays(cur),sp=solveDays(prev);
-  var title=isLocAdmin()?"Скарги":"Скарги",sub=(Q.loc?esc(shortLoc(Q.loc)):isLocAdmin()?esc(shortLoc(LOCS[0])):"Усі точки")+" · "+MNOM[5]+" "+S.mk.slice(0,4);
+  var title=isLocAdmin()?"Скарги":"Скарги",sub=(Q.loc?esc(shortLoc(Q.loc)):oneLoc()?esc(shortLoc(LOCS[0])):isLocAdmin()?"Ваші точки":"Усі точки")+" · "+MNOM[5]+" "+S.mk.slice(0,4);
   var h=head(title,sub,null,'<button class="btn2 lp-only" data-export>'+I("file")+'Excel</button>');
   h+=kpiStrip([
     ["Чекають рішення",open.length,"",late?'<span class="chip bad">'+late+' довше '+LATE+' днів</span>':'<span>'+(open.length?"усі свіжі":"нічого не чекає")+'</span>'],
@@ -839,7 +861,7 @@ function renderLocs(){
 function renderCab(){
   var l=S.loc,C=S.cab,p=parts(l),mine=inM(5).filter(function(r){return r.loc===l}),prevN=inM(4).filter(function(r){return r.loc===l}).length,g=gOf(l,5),chk=chkOf(l);
   var open=mine.filter(isOpen),late=open.filter(isLate).length,cc=count(mine,function(r){return r.ch}),tc=count(mine,function(r){return r.themes});
-  var crumb=isLocAdmin()?null:(S.from==="queue"?"Скарги":S.from==="home"?"Огляд":"Точки");
+  var crumb=oneLoc()?null:(S.from==="queue"?"Скарги":S.from==="home"?"Огляд":"Точки");
   var h=head(p.short,esc(locSub(l)),crumb,'<button class="btnk btna lp-only" data-add>'+I("plus")+'Скарга</button>');
   var gs=g?g.start:null,ge=gNow(g);
   h+=kpiStrip([
@@ -928,7 +950,7 @@ function openItem(idn){
   var p=parts(r.loc),a=addedBy(r),open=isOpen(r),ag=age(r);
   var body='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+(open?'<span class="pill '+(ag>LATE?"late":"open")+'">'+(ag?"Чекає "+ag+" "+plural(ag,"день","дні","днів"):"Нова, чекає рішення")+'</span>':'<span class="pill done">Вирішено'+(r.who?" · "+esc(r.who):"")+'</span>')+
     '<span class="byw'+(a.auto?" auto":"")+'" style="margin-left:auto"><span class="ava">'+(a.auto?I("spark"):esc(initials(a.name)))+'</span>Додав(ла): '+esc(a.name)+'</span></div>';
-  body+='<div class="mini"><div><div class="l">Точка</div><b>'+esc(p.short)+'</b><div class="s">'+esc(locSub(r.loc))+'</div>'+(isLocAdmin()?"":'<button data-openloc="'+esc(r.loc)+'">Сторінка точки →</button>')+'</div>'+
+  body+='<div class="mini"><div><div class="l">Точка</div><b>'+esc(p.short)+'</b><div class="s">'+esc(locSub(r.loc))+'</div>'+(oneLoc()?"":'<button data-openloc="'+esc(r.loc)+'">Сторінка точки →</button>')+'</div>'+
     '<div><div class="l">Канал</div><b>'+cb(r.ch,1)+esc(r.ch)+'</b><div class="s">'+(r.rating?stars(r.rating)+' оцінка '+r.rating+' з 5':"відгук "+r.day+" "+GEN[mNum(r.date)])+'</div></div></div>';
   body+='<div><div class="lbl">Що написав гість</div><div class="quote">'+esc(r.text)+'</div>'+(r.themes.length?'<div class="tags" style="margin-top:8px">'+r.themes.map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join("")+'</div>':"")+
     (r.photo?'<div class="photo-b" id="phBox"><span class="thumb">'+I("img")+'</span><button class="lk" id="phBtn">Показати фото</button></div>':"")+'</div>';
@@ -975,7 +997,7 @@ function shrink(file){ // phone screenshots are large; 1600px is enough to read 
     c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);c.getContext("2d").drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);var d=c.toDataURL("image/jpeg",0.85);res({preview:d,data:d.split(",")[1],mime:"image/jpeg"})};img.onerror=rej;img.src=url});
 }
 function openAdd(preLoc){
-  var fixedLoc=isLocAdmin()?LOCS[0]:null,chs=ME.channels;
+  var fixedLoc=oneLoc()?LOCS[0]:null,chs=ME.channels;
   var A={loc:fixedLoc||preLoc||null,ch:chs.length===1?chs[0]:null,photo:null,topics:null,date:ME.today,rating:null,ai:{}};
   var body='<label class="drop" for="aPh"><span class="thumb" id="aPrev">'+I("img")+'</span><span class="tx"><b id="aDropT">Додайте скриншот або фото</b><span id="aDropS">ШІ прочитає його і заповнить поля сам</span></span><span class="ai" id="aAi" hidden></span><input type="file" id="aPh" accept="image/*"></label>'+
     '<div class="fgrid">'+(fixedLoc?'<div><div class="lbl">Точка</div><div class="pick"><span>'+esc(shortLoc(fixedLoc))+'</span></div></div>':'<div><div class="lbl">Точка <span class="req">*</span></div><button class="pick'+(A.loc?"":" empty")+'" id="aLoc"><span>'+esc(A.loc?shortLoc(A.loc):"Вибрати точку")+'</span>'+I("down")+'</button></div>')+
@@ -1052,17 +1074,48 @@ function openUsers(){
   openPanel({title:"Доступи",body:'<div class="empty">Завантаження…</div>',mount:function(el){
     var b=el.querySelector(".dr-b");
     function draw(){api("users").then(function(x){
-      var h='<button class="btnk btna wide" id="newInv">'+I("plus")+'Новий доступ</button>';
-      h+='<div class="sect">Користуються · '+x.users.length+'</div><div>'+x.users.map(function(u){return '<div class="li"><span class="ava">'+esc(initials(u.name))+'</span><span class="tx">'+esc(u.name)+'<small>'+esc(ME.roles[u.role])+(u.location_id&&LOCNAME[u.location_id]?" · "+esc(shortLoc(LOCNAME[u.location_id])):"")+(u.username?" · @"+esc(u.username):"")+'</small></span>'+(u.tg_id!==ME.user.tg_id?'<button class="lk2" data-off="'+u.tg_id+'">Вимкнути</button>':"")+'</div>'}).join("")+'</div>';
+      var h='<div class="row2"><button class="btnk btna" id="newInv">'+I("plus")+'Новий доступ</button><button class="btn2" id="admLink">'+I("send")+'Посилання для адмінів точок</button></div>';
+      h+='<div class="sect">Користуються · '+x.users.length+'</div><div>'+x.users.map(function(u){return '<div class="li"><span class="ava">'+esc(initials(u.name))+'</span><span class="tx">'+esc(u.name)+'<small>'+esc(ME.roles[u.role])+(u.role==="loc_admin"?" · "+esc(locsOfUser(u)):"")+(u.username?" · @"+esc(u.username):"")+'</small></span>'+(u.role==="loc_admin"?'<button class="lk2" data-locs="'+u.tg_id+'">Точки</button>':"")+(u.tg_id!==ME.user.tg_id?'<button class="lk2" data-off="'+u.tg_id+'">Вимкнути</button>':"")+'</div>'}).join("")+'</div>';
+      USERS=x.users;
       if(x.invites.length)h+='<div class="sect">Коди, які ще не використали</div><div>'+x.invites.map(function(i){return '<div class="li"><span class="tx"><b>'+esc(i.code)+'</b> · '+esc(i.name)+'<small>'+esc(ME.roles[i.role])+(i.location_id&&LOCNAME[i.location_id]?" · "+esc(shortLoc(LOCNAME[i.location_id])):"")+'</small></span><button class="lk2" data-del="'+esc(i.code)+'">Видалити</button></div>'}).join("")+'</div>';
       b.innerHTML=h;
     }).catch(function(e){b.innerHTML='<div class="empty">'+esc(e.message)+'</div>'})}
     b.addEventListener("click",function(e){var t=e.target;
       if(t.closest("#newInv")){openInvite(draw);return}
+      if(t.closest("#admLink")){openAdminLink();return}
+      var lc=t.closest("[data-locs]");if(lc){var who=USERS.filter(function(z){return z.tg_id===+lc.dataset.locs})[0];if(who)openUserLocs(who,draw);return}
       var off=t.closest("[data-off]");if(off){if(!confirm("Вимкнути доступ?"))return;api("user_off",{tg_id:+off.dataset.off}).then(draw).catch(function(e){toast(e.message)});return}
       var del=t.closest("[data-del]");if(del){api("invite_del",{code:del.dataset.del}).then(draw)}});
     draw();
   }});
+}
+var USERS=[];
+function locsOfUser(u){var ids=u.location_ids&&u.location_ids.length?u.location_ids:u.location_id?[u.location_id]:[];
+  var n=ids.map(function(id){return LOCNAME[id]?shortLoc(LOCNAME[id]):null}).filter(Boolean);return n.length?n.join(", "):"точки не вибрано"}
+// One link for every location admin: they write their name and pick their own locations (owner 2026-10-26).
+function openAdminLink(){
+  openPanel({title:"Посилання для адмінів точок",narrow:true,body:'<div class="empty">Завантаження…</div>',mount:function(el){var b=el.querySelector(".dr-b");
+    api("admin_link").then(function(x){
+      var msg="Вітаю! У нас запрацювала апка «Відгуки»: тут збираються всі скарги гостей з Glovo, Bolt, Google та інших сервісів по ваших точках. Відкрийте посилання, напишіть ім'я і виберіть точки, за які відповідаєте. Далі буде коротке опитування про те, як ви зараз працюєте зі скаргами, близько 10 хвилин, і екскурсія по апці. Відповідайте детально, своїми словами, це важливо.\n"+x.link;
+      b.innerHTML='<div class="muted" style="font-size:13px;line-height:1.5">Одне посилання для всіх адмінів точок. Кожен напише ім\'я і вибере свої точки, до 4. Вам у бот прийде, хто і які точки вибрав, з кнопкою «Прибрати доступ». Зайшли за посиланням: <b>'+x.uses+'</b></div>'+
+        '<div><div class="lbl">Повідомлення для адмінів</div><textarea class="inp" id="alMsg" rows="9" readonly style="resize:none">'+esc(msg)+'</textarea></div>'+
+        '<div class="row2"><button class="btnk btna" id="alCopy">Скопіювати повідомлення</button><button class="btn2" id="alLink">Тільки посилання</button></div>';
+      function copy(t){(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){toast("Скопійовано")}).catch(function(){toast("Виділіть текст і скопіюйте вручну")})}
+      b.querySelector("#alCopy").addEventListener("click",function(){copy(msg)});
+      b.querySelector("#alLink").addEventListener("click",function(){copy(x.link)});
+    }).catch(function(e){b.innerHTML='<div class="empty">'+esc(e.message)+'</div>'})}});
+}
+function openUserLocs(u,done){
+  var sel=(u.location_ids&&u.location_ids.length?u.location_ids:u.location_id?[u.location_id]:[]).slice();
+  function body(){return '<div class="muted" style="font-size:13px">'+esc(u.name)+' бачить скарги тільки цих точок. До 4.</div><div>'+LOCS.map(function(l){var id=LOCBY[l].id,on=sel.indexOf(id)>=0;
+    return '<button class="li'+(on?" on":"")+'" data-lid="'+id+'"><span class="tx"><b style="font-weight:600">'+esc(shortLoc(l))+'</b><small>'+esc(locSub(l))+'</small></span>'+(on?'<span class="ck">✓</span>':"")+'</button>'}).join("")+'</div>'}
+  openPanel({title:"Точки: "+u.name,narrow:true,body:body(),foot:'<span class="sp" id="ulN"></span><button class="btnk" id="ulSave">Зберегти</button>',mount:function(el){
+    var b=el.querySelector(".dr-b"),n=el.querySelector("#ulN");function cnt(){n.textContent="Вибрано "+sel.length+" з 4"}cnt();
+    b.addEventListener("click",function(e){var o=e.target.closest("[data-lid]");if(!o)return;var id=+o.dataset.lid,k=sel.indexOf(id);
+      if(k>=0)sel.splice(k,1);else if(sel.length<4)sel.push(id);else{toast("Не більше 4 точок");return}
+      var st=b.scrollTop;b.innerHTML=body();b.scrollTop=st;cnt()});
+    el.querySelector("#ulSave").addEventListener("click",function(){var btn=this;if(!sel.length){toast("Виберіть хоча б одну точку");return}busy(btn,true);
+      api("user_locs",{tg_id:u.tg_id,location_ids:sel}).then(function(){closePanel();toast("Точки збережено");if(done)done()}).catch(function(e){busy(btn,false);toast(e.message)})})}});
 }
 function openInvite(done){
   var Iv={role:"comms",loc:null},roles=Object.keys(ME.roles);
@@ -1143,10 +1196,10 @@ app.addEventListener("input",function(e){
 });
 
 function render(){
-  if(isLocAdmin()&&!S.loc&&S.tab!=="queue"){S.tab="loc";S.loc=LOCS[0]}
+  if(oneLoc()&&!S.loc&&S.tab!=="queue"){S.tab="loc";S.loc=LOCS[0]}
   var page=S.loc?renderCab():({home:renderHome,queue:renderQueue,locs:renderLocs,collab:renderCollab})[S.tab]();
   app.innerHTML='<div class="shell">'+side()+'<main class="main">'+page+'</main></div>'+tabbar();
-  if(TG&&TG.BackButton){if(S.loc&&!isLocAdmin())TG.BackButton.show();else TG.BackButton.hide()}
+  if(TG&&TG.BackButton){if(S.loc&&!oneLoc())TG.BackButton.show();else TG.BackButton.hide()}
 }
 if(TG&&TG.BackButton)TG.BackButton.onClick(function(){if(stack.length)closePanel();else if(S.loc)goBack()});
 var lastPhone=PHONE.matches;
@@ -1160,7 +1213,8 @@ function svFirstGap(){var n=ME.survey.questions.length;for(var i=0;i<n;i++)if(!S
 function surveyStart(){
   var s=ME.survey;SVY={i:0,view:"intro",tour:0,ask:{},text:{},asked:{}};
   s.answers.forEach(function(a){SVY.text[a.q]=a.answer;if(a.asked)SVY.asked[a.q]=1});
-  if(s.done)SVY.view="tour";else if(s.answers.length){SVY.view="q";SVY.i=svFirstGap()}
+  if(s.pick){SVY.view="pick";SVY.locs=[];SVY.name=ME.user.name}
+  else if(s.done)SVY.view="tour";else if(s.answers.length){SVY.view="q";SVY.i=svFirstGap()}
   if(TG&&TG.BackButton)TG.BackButton.hide();
   renderSurvey();
 }
@@ -1179,7 +1233,21 @@ function renderSurvey(){
   var steps=s.questions.map(function(q){return q.t});
   var title=v==="tour"?"Як працює апка":"Знайомство з апкою",note=v==="tour"?"Коротка екскурсія, її не можна пропустити.":svRoman()?"Ваші відповіді стануть правилами для команди.":"Розкажіть, як ви зараз працюєте зі скаргами.";
   var html;
-  if(v==="intro"){
+  if(v==="pick"){
+    var max=s.maxLocs||4,by={};s.locations.forEach(function(l){(by[l.city]=by[l.city]||[]).push(l)});
+    var cities=Object.keys(by).sort(function(a,b){return by[b].length-by[a].length||a.localeCompare(b,"uk")});
+    var multi=cities.filter(function(c){return by[c].length>1}),solo=cities.filter(function(c){return by[c].length===1});
+    function chip(l){var m=/^(.*?)(?:\s*\(([^)]*)\))?\s*$/.exec(l.name),base=m[1],nick=m[2]||"",sh=base.indexOf(l.city+", ")===0?base.slice(l.city.length+2):base,on=SVY.locs.indexOf(l.id)>=0;
+      var sub=[nick,sh!==l.city?l.city:""].filter(Boolean).join(" · ");
+      return '<button class="pk'+(on?" on":"")+'" data-pk="'+l.id+'"'+(!on&&SVY.locs.length>=max?" disabled":"")+'><span class="bx">'+(on?I("check"):"")+'</span><span class="t"><b>'+esc(sh)+'</b>'+(sub?'<small>'+esc(sub)+'</small>':"")+'</span></button>'}
+    var grid=multi.map(function(c){return '<div class="pk-city">'+esc(c)+'</div><div class="pk-grid">'+by[c].map(chip).join("")+'</div>'}).join("")+
+      (solo.length?'<div class="pk-city">Інші міста</div><div class="pk-grid">'+solo.map(function(c){return chip(by[c][0])}).join("")+'</div>':"");
+    html=svFrame(steps,-1,"",
+      '<h1>Вітаємо! Хто ви і які точки ведете?</h1><div class="hero"><p>Виберіть усі точки, за які відповідаєте, до '+max+'. У кабінеті будуть видні скарги тільки цих точок.</p></div>'+
+      '<div><div class="lbl">Ваше ім\'я <span class="req">*</span></div><input class="inp" id="pkName" maxlength="40" placeholder="Наприклад, Олена Коваль" value="'+esc(SVY.name||"")+'"></div>'+
+      '<div class="pk-top"><div class="lbl" style="margin:0">Ваші точки <span class="req">*</span></div><span class="sp"></span><span class="pk-n">Вибрано <b>'+SVY.locs.length+'</b> з '+max+'</span></div>'+grid,
+      '<span class="sp">Далі '+n+' питань і коротка екскурсія</span><button class="btnk btna" data-sv="pkgo"'+(SVY.locs.length&&(SVY.name||"").trim().length>=2?"":" disabled")+'>Далі'+I("right")+'</button>',title,"Спершу ім\'я і ваші точки, потім кілька питань.");
+  }else if(v==="intro"){
     html=svFrame(steps,-1,"",
       '<div class="hero"><div class="wave">'+I(svRoman()?"star":"users")+'</div>'+
       (svRoman()?'<h1>'+first+', вітаємо в апці «Відгуки»</h1><p>Команда розповідатиме, як вона працює зі скаргами. Від вас нам потрібне інше: як це <b>має</b> працювати. Ваші відповіді стануть правилами: хто відповідає за скаргу, за який час її закривати і що доходить до вас. '+n+' питань, близько 10 хвилин.</p>'
@@ -1212,6 +1280,8 @@ function renderSurvey(){
       (k?'<button class="btn2" data-sv="tback">Назад</button>':'')+'<span class="sp">Без пропуску · '+(k+1)+' з '+T.length+'</span><button class="btnk btna" data-sv="tnext">'+(k===T.length-1?"Почати роботу":"Далі")+I("right")+'</button>',title,note);
   }
   app.innerHTML=html;
+  var pn=document.getElementById("pkName");
+  if(pn)pn.addEventListener("input",function(){SVY.name=pn.value;var go=app.querySelector("[data-sv=pkgo]");go.disabled=!(SVY.locs.length&&pn.value.trim().length>=2)});
   var ta=document.getElementById("svText");
   if(ta){ta.addEventListener("input",function(){SVY.text[SVY.i]=ta.value;var l=ta.value.trim().length,c=document.getElementById("svCnt");c.className="cnt-l"+(l>=ME.survey.min?" ok":"");c.innerHTML=svCount(l);document.getElementById("svNext").disabled=l<ME.survey.min});
     if(!PHONE.matches)ta.focus()}
@@ -1234,8 +1304,12 @@ app.addEventListener("click",function(e){
   if(!SVY)return;
   var st=e.target.closest("[data-step]");
   if(st&&SVY.view==="q"){var k=+st.dataset.step;if(k<=svFirstGap()){SVY.i=k;renderSurvey()}return}
+  var pk=e.target.closest("[data-pk]");
+  if(pk&&SVY.view==="pick"){var id=+pk.dataset.pk,k=SVY.locs.indexOf(id);if(k>=0)SVY.locs.splice(k,1);else SVY.locs.push(id);
+    var sc=app.querySelector(".sv-b").scrollTop;renderSurvey();app.querySelector(".sv-b").scrollTop=sc;return}
   var b=e.target.closest("[data-sv]");if(!b)return;
   var a=b.dataset.sv,n=ME.survey.questions.length;
+  if(a==="pkgo"){pickConfirm();return}
   if(a==="begin"){SVY.view="q";SVY.i=svFirstGap();renderSurvey()}
   else if(a==="prev"){SVY.i--;renderSurvey()}
   else if(a==="tour"){SVY.view="tour";SVY.tour=0;renderSurvey()}
@@ -1252,6 +1326,17 @@ app.addEventListener("click",function(e){
     }).catch(function(x){busy(b,false);toast(x.message)});
   }
 });
+
+// Before the survey: «have you picked all your locations?», then the choice is saved and the owner is told.
+function pickConfirm(){
+  var names=ME.survey.locations.filter(function(l){return SVY.locs.indexOf(l.id)>=0}).map(function(l){return l.name.replace(/^Львів, /,"")});
+  openPanel({title:"Ви вибрали всі свої точки?",narrow:true,
+    body:'<div class="muted" style="font-size:13.5px;line-height:1.5">Перевірте ще раз. Після підтвердження змінити точки зможе тільки власник.</div><div class="pk-sum">'+names.map(function(x){return '<span>'+esc(x)+'</span>'}).join("")+'</div>',
+    foot:'<button class="btn2" id="pkBack">Змінити</button><span class="sp"></span><button class="btnk btna" id="pkYes">Так, це всі мої точки</button>',
+    mount:function(el){el.querySelector("#pkBack").addEventListener("click",closePanel);
+      el.querySelector("#pkYes").addEventListener("click",function(){var btn=this;busy(btn,true);
+        api("locs_pick",{name:SVY.name.trim(),location_ids:SVY.locs}).then(function(){closeAll();ME.user.name=SVY.name.trim();ME.survey.pick=false;SVY.view="intro";renderSurvey()}).catch(function(x){busy(btn,false);toast(x.message)})})}});
+}
 
 // ---- owner: who passed, their answers, invitations, remarks about the app ----
 function svStatus(p){
@@ -1306,7 +1391,7 @@ function start(){
   bare('<div class="muted">Завантаження…</div>');
   api("me").then(function(me){ME=me;THEMES=me.topics;RESULTS=me.results;S.mk=me.today.slice(0,7);setWindow(S.mk);
     if(me.survey&&me.survey.locked){surveyStart();return}
-    if(isLocAdmin())S.tab="loc";
+    if(isLocAdmin())S.tab="locs";
     // links from the bot: ?tab=queue opens the queue, ?item=123 opens that complaint
     var q=new URLSearchParams(location.search),tab=q.get("tab"),item=+q.get("item");
     if(tab&&tabsFor().some(function(t){return t[0]===tab}))S.tab=tab;
