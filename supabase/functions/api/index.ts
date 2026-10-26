@@ -3,7 +3,7 @@ import { syncSheet } from "../_shared/sheet.ts";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { parseComplaint } from "../_shared/ai.ts";
 import {
-  activeLocations, APP_URL, bootstrapAdmin, channelsFor, CHANNELS, db, getUser, keywordTopics, kyivToday, newCode, redeemCode,
+  activeLocations, APP_URL, bootstrapAdmin, channelsFor, CHANNELS, db, esc, getUser, keywordTopics, kyivToday, newCode, ownLocations, redeemCode,
   RESULTS, ROLES, savePhoto, telegramUser, tg, TOPICS, type User,
 } from "../_shared/common.ts";
 import { FEEDBACK_KB, followUp, inviteText, locked, MIN, ownerId, SETS, setOf, type SurveyUser } from "../_shared/survey.ts";
@@ -37,7 +37,8 @@ function shiftMonth(month: string, by: number): string {
 // Only what this user may see: a location admin sees their location, an operator sees what they entered.
 // deno-lint-ignore no-explicit-any
 function scope(q: any, u: User) {
-  if (u.role === "loc_admin") return q.eq("location_id", u.location_id);
+  const own = ownLocations(u);
+  if (own) return q.in("location_id", own.length ? own : [-1]);
   return q;
 }
 
@@ -89,7 +90,7 @@ async function monthData(u: User, month: string) {
   for (const p of who ?? []) people[p.tg_id] = p.name;
   return {
     month,
-    locations: u.role === "loc_admin" ? locations.filter((l) => l.id === u.location_id) : locations,
+    locations: ownLocations(u) ? locations.filter((l) => ownLocations(u)!.includes(l.id)) : locations,
     items: items ?? [],
     counts,
     google: google ?? [],
@@ -142,20 +143,57 @@ async function surveyState(u: SurveyUser) {
   const set = setOf(u);
   if (!u.survey_due_at || set === "none" || !SETS[set]) return { locked: false };
   const { data: answers } = await db.from("survey_answers").select("q,answer,asked").eq("tg_id", u.tg_id);
+  // Joined through the shared link: name and locations come first.
+  const pick = u.role === "loc_admin" && !u.locs_confirmed_at;
   return {
     locked: locked(u), set, who: SETS[set].who, min: MIN, questions: SETS[set].q, answers: answers ?? [],
     done: !!u.survey_done_at, toured: !!u.tour_done_at,
+    ...(pick ? { pick: true, maxLocs: MAX_LOCS, locations: (await activeLocations()).map((l) => ({ id: l.id, name: l.name, city: l.city })) } : {}),
   };
+}
+
+// Up to 4: one admin runs four locations, the rest three (owner 2026-10-26).
+const MAX_LOCS = 4;
+async function validLocs(ids: unknown): Promise<number[]> {
+  const want = [...new Set((Array.isArray(ids) ? ids : []).map(Number))];
+  const active = new Set((await activeLocations()).map((l) => l.id));
+  must(want.length && want.every((id) => active.has(id)), "Виберіть свої точки");
+  must(want.length <= MAX_LOCS, `Не більше ${MAX_LOCS} точок`);
+  return want;
+}
+async function setLocs(tgId: number, ids: number[]) {
+  await db.from("user_locations").delete().eq("tg_id", tgId);
+  await db.from("user_locations").insert(ids.map((location_id) => ({ tg_id: tgId, location_id })));
 }
 
 // deno-lint-ignore no-explicit-any
 async function handle(u: User, a: string, p: any): Promise<unknown> {
   const su = u as SurveyUser;
   // Until the survey and the tour are done, only they are open (owner 2026-10-24).
-  if (locked(su) && !["me", "survey_save", "survey_finish", "tour_done"].includes(a)) throw new Fail("Спершу пройдіть знайомство з апкою");
+  if (locked(su) && !["me", "locs_pick", "survey_save", "survey_finish", "tour_done"].includes(a)) throw new Fail("Спершу пройдіть знайомство з апкою");
   switch (a) {
     case "me":
       return { user: u, roles: ROLES, channels: channelsFor(u.role), allChannels: CHANNELS, topics: TOPICS, results: RESULTS, bot: await botUsername(), today: kyivToday(), survey: await surveyState(su) };
+
+    case "locs_pick": {
+      must(u.role === "loc_admin" && !su.locs_confirmed_at, "Точки вже вибрано");
+      const name = String(p.name ?? "").trim().replace(/\s+/g, " ");
+      must(name.length >= 2 && name.length <= 40, "Напишіть ім'я");
+      const ids = await validLocs(p.location_ids);
+      await setLocs(u.tg_id, ids);
+      await db.from("users").update({ name, location_id: ids[0], locs_confirmed_at: new Date().toISOString() }).eq("tg_id", u.tg_id);
+      // The owner sees every newcomer and can take the access back with one tap (owner 2026-10-26: start at once, notify).
+      const owner = await ownerId();
+      if (owner && owner !== u.tg_id) {
+        const names = (await activeLocations()).filter((l) => ids.includes(l.id)).map((l) => l.name.replace(/^Львів, /, ""));
+        await tg("sendMessage", {
+          chat_id: owner, parse_mode: "HTML",
+          text: `👤 <b>Новий адмін точки</b>\n${esc(name)}${u.username ? ` (@${esc(u.username)})` : ""}\nТочки: ${esc(names.join(", "))}\n\nЯкщо це не ваш адмін або точки не ті, приберіть доступ або поправте точки в «Налаштування → Доступи».`,
+          reply_markup: { inline_keyboard: [[{ text: "Прибрати доступ", callback_data: `rm:${u.tg_id}` }]] },
+        }).catch(console.error);
+      }
+      return { ok: true };
+    }
 
     case "survey_save": {
       const set = SETS[setOf(su)];
@@ -244,7 +282,8 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
     }
 
     case "add": {
-      const locId = u.role === "loc_admin" ? u.location_id : Number(p.location_id);
+      const own = ownLocations(u);
+      const locId = own ? (own.length === 1 ? own[0] : own.includes(Number(p.location_id)) ? Number(p.location_id) : null) : Number(p.location_id);
       must(locId, "Виберіть точку");
       must(channelsFor(u.role).includes(p.channel), "Виберіть канал");
       const text = String(p.text ?? "").trim();
@@ -308,8 +347,10 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
     case "users": {
       must(u.role === "admin", "Немає доступу");
       const { data: users } = await db.from("users").select("*").eq("active", true).order("created_at");
-      const { data: invites } = await db.from("invites").select("*").is("used_by", null).order("created_at", { ascending: false });
-      return { users: users ?? [], invites: invites ?? [] };
+      const { data: invites } = await db.from("invites").select("*").is("used_by", null).eq("shared", false).order("created_at", { ascending: false });
+      const { data: ul } = await db.from("user_locations").select("tg_id,location_id");
+      const locsOf = (id: number) => (ul ?? []).filter((r) => r.tg_id === id).map((r) => r.location_id);
+      return { users: (users ?? []).map((x) => ({ ...x, location_ids: locsOf(x.tg_id) })), invites: invites ?? [] };
     }
     case "invite": {
       must(u.role === "admin", "Немає доступу");
@@ -319,6 +360,25 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
       const code = newCode();
       await db.from("invites").insert({ code, role: p.role, location_id: p.role === "loc_admin" ? p.location_id : null, name: String(p.name).trim(), created_by: u.tg_id });
       return { code, link: `https://t.me/${await botUsername()}?start=${code}` };
+    }
+    case "admin_link": {
+      must(u.role === "admin", "Немає доступу");
+      let { data: inv } = await db.from("invites").select("code,uses").eq("shared", true).maybeSingle();
+      if (!inv) {
+        const code = newCode();
+        await db.from("invites").insert({ code, role: "loc_admin", name: "Адміни точок (спільне посилання)", shared: true, created_by: u.tg_id });
+        inv = { code, uses: 0 };
+      }
+      return { link: `https://t.me/${await botUsername()}?start=${inv.code}`, uses: inv.uses };
+    }
+    case "user_locs": {
+      must(u.role === "admin", "Немає доступу");
+      const { data: x } = await db.from("users").select("role").eq("tg_id", p.tg_id).maybeSingle();
+      must(x?.role === "loc_admin", "Точки є тільки в адмінів точок");
+      const ids = await validLocs(p.location_ids);
+      await setLocs(Number(p.tg_id), ids);
+      await db.from("users").update({ location_id: ids[0], locs_confirmed_at: new Date().toISOString() }).eq("tg_id", p.tg_id);
+      return { ok: true };
     }
     case "invite_del":
       must(u.role === "admin", "Немає доступу");

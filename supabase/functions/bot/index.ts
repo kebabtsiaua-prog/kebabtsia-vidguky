@@ -5,7 +5,7 @@ import { syncSheet } from "../_shared/sheet.ts";
 import { b64, parseComplaint } from "../_shared/ai.ts";
 import { listChats, onGroupMessage, onMembership } from "../_shared/uployal.ts";
 import {
-  activeLocations, APP_URL, bootstrapAdmin, channelsFor, db, getUser, itemUrl, kyivToday, type Location, redeemCode, ROLES,
+  activeLocations, APP_URL, bootstrapAdmin, channelsFor, db, getUser, itemUrl, kyivToday, type Location, ownLocations, redeemCode, ROLES,
   savePhoto, tabUrl, tg, tgFile, type User, webhookSecret,
 } from "../_shared/common.ts";
 import { recipients } from "../_shared/uployal.ts";
@@ -56,7 +56,7 @@ function draftKeyboard(id: number, d: Draft, u: User) {
   const rows = [];
   if (d.loc && d.ch && d.text) rows.push([{ text: "✓ Зберегти", callback_data: `s:${id}` }]);
   const edit = [];
-  if (u.role !== "loc_admin") edit.push({ text: "Точка", callback_data: `lp:${id}:0` });
+  if ((ownLocations(u)?.length ?? 2) > 1) edit.push({ text: "Точка", callback_data: `lp:${id}:0` });
   edit.push({ text: "Канал", callback_data: `c:${id}` });
   edit.push({ text: "Текст", callback_data: `t:${id}` });
   rows.push(edit);
@@ -190,8 +190,9 @@ async function onMessage(msg: any) {
   }
   const p = await parseComplaint(locs, { text, image });
   const allowed = channelsFor(u.role);
+  const own = ownLocations(u);
   const d: Draft = {
-    loc: u.role === "loc_admin" ? u.location_id : p.location_id,
+    loc: own ? (own.length === 1 ? own[0] : own.includes(p.location_id ?? -1) ? p.location_id : null) : p.location_id,
     ch: p.channel && allowed.includes(p.channel) ? p.channel : allowed.length === 1 ? allowed[0] : null,
     text: p.text || text,
     date: p.date ?? kyivToday(),
@@ -211,6 +212,14 @@ async function onCallback(cb: any) {
   const [kind, idStr, arg] = String(cb.data ?? "").split(":");
   const id = Number(idStr);
   if (!u || !chat) return tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Немає доступу" });
+  // The owner takes back access from someone who joined through the shared link.
+  if (kind === "rm") {
+    if (u.role !== "admin" || id === u.tg_id) return tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Немає доступу" });
+    const { data: x } = await db.from("users").update({ active: false }).eq("tg_id", id).select("name").maybeSingle();
+    await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Доступ прибрано" });
+    await tg("editMessageText", { chat_id: chat, message_id: msgId, text: `🚫 Доступ прибрано: ${x?.name ?? ""}. Ця людина більше не бачить апку.` });
+    return;
+  }
   const d = await loadDraft(id, u);
   if (!d) {
     await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Ця чернетка вже неактуальна" });
@@ -227,7 +236,8 @@ async function onCallback(cb: any) {
     await storeDraft(id, d);
     await showDraft(chat, msgId, id, d, u);
   } else if (kind === "lp") {
-    const locs = await activeLocations();
+    const own = ownLocations(u);
+    const locs = (await activeLocations()).filter((l) => !own || own.includes(l.id));
     const page = Number(arg) || 0;
     const slice = locs.slice(page * PAGE, page * PAGE + PAGE);
     const rows = [];
@@ -241,7 +251,7 @@ async function onCallback(cb: any) {
     rows.push([{ text: "↩ До скарги", callback_data: `v:${id}` }]);
     await tg("editMessageText", { chat_id: chat, message_id: msgId, text: "Виберіть точку:", reply_markup: { inline_keyboard: rows } });
   } else if (kind === "ls") {
-    if (u.role !== "loc_admin") d.loc = Number(arg);
+    if (!ownLocations(u) || ownLocations(u)!.includes(Number(arg))) d.loc = Number(arg);
     await storeDraft(id, d);
     await showDraft(chat, msgId, id, d, u);
   } else if (kind === "c") {

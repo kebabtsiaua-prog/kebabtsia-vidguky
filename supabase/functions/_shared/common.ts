@@ -60,6 +60,8 @@ export type User = {
   role: string;
   location_id: number | null;
   active: boolean;
+  // Location admins: every location they run (user_locations), filled in by getUser.
+  location_ids?: number[];
 };
 
 export type Location = { id: number; name: string; city: string; aliases: string[]; active: boolean };
@@ -122,7 +124,22 @@ export async function telegramUser(initData: string): Promise<{ id: number; firs
 
 export async function getUser(tgId: number): Promise<User | null> {
   const { data } = await db.from("users").select("*").eq("tg_id", tgId).eq("active", true).maybeSingle();
-  return data as User | null;
+  const u = data as User | null;
+  if (u?.role === "loc_admin") {
+    const { data: ids } = await db.from("user_locations").select("location_id").eq("tg_id", tgId);
+    u.location_ids = (ids ?? []).map((r) => r.location_id);
+    if (!u.location_ids.length && u.location_id) u.location_ids = [u.location_id];
+  }
+  return u;
+}
+
+// Locations a person may see: null means all of them.
+export function ownLocations(u: User): number[] | null {
+  return u.role === "loc_admin" ? u.location_ids ?? (u.location_id ? [u.location_id] : []) : null;
+}
+
+export function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 export function displayName(u: { first_name?: string; last_name?: string; username?: string }): string {
@@ -148,6 +165,19 @@ export async function redeemCode(code: string, from: { id: number; first_name?: 
   if (!/^[A-Z0-9]{6,10}$/.test(clean)) return null;
   const { data: inv } = await db.from("invites").select("*").eq("code", clean).is("used_by", null).maybeSingle();
   if (!inv) return null;
+  // Someone the owner removed does not come back through the shared link.
+  const { data: was } = await db.from("users").select("active").eq("tg_id", from.id).maybeSingle();
+  if (inv.shared) {
+    if (was && !was.active) return null;
+    await db.from("invites").update({ uses: (inv.uses ?? 0) + 1 }).eq("code", clean);
+    const now = new Date().toISOString();
+    // The name and the locations come next, in the app; then the survey and the tour.
+    const { data } = await db.from("users").upsert({
+      tg_id: from.id, name: displayName(from), username: from.username ?? null, role: "loc_admin", location_id: null, active: true,
+      survey_due_at: now,
+    }).select().single();
+    return data as User;
+  }
   const { data: claimed } = await db.from("invites")
     .update({ used_by: from.id, used_at: new Date().toISOString() })
     .eq("code", clean).is("used_by", null).select().maybeSingle();
@@ -162,7 +192,8 @@ export async function redeemCode(code: string, from: { id: number; first_name?: 
     // A tour-only invite (survey_set 'tour'): no questions, the cabinet opens after the tour.
     ...(inv.survey_set === "tour" ? { survey_set: "tour", survey_due_at: new Date().toISOString(), survey_done_at: new Date().toISOString(), morning_report: true } : {}),
   };
-  const { data } = await db.from("users").upsert(row).select().single();
+  const { data } = await db.from("users").upsert({ ...row, ...(inv.role === "loc_admin" && inv.location_id ? { locs_confirmed_at: new Date().toISOString() } : {}) }).select().single();
+  if (inv.role === "loc_admin" && inv.location_id) await db.from("user_locations").upsert({ tg_id: from.id, location_id: inv.location_id });
   return data as User;
 }
 

@@ -51,6 +51,7 @@ export type SurveyUser = User & {
   survey_due_at: string | null;
   survey_done_at: string | null;
   tour_done_at: string | null;
+  locs_confirmed_at?: string | null;
 };
 
 export function setOf(u: SurveyUser): string {
@@ -67,6 +68,10 @@ export function inviteText(u: SurveyUser): string {
   const set = SETS[setOf(u)];
   const n = set?.q.length ?? 0;
   const first = u.name.trim().split(/\s+/)[0];
+  if (u.role === "loc_admin" && !u.locs_confirmed_at) {
+    return `👋 <b>Вітаємо в апці «Відгуки»!</b>\n\nТут збираються всі скарги гостей з Glovo, Bolt, Google та інших сервісів. Натисніть «Почати»: напишіть ім'я і виберіть точки, за які відповідаєте. Далі ${n} питань про те, як ви зараз працюєте зі скаргами, близько 10 хвилин, і коротка екскурсія по апці.\n\n` +
+      "Відповідайте детально, своїми словами. Якщо в апці щось незручно, напишіть тут кнопкою «Зауваження до апки».";
+  }
   if (setOf(u) === "tour") {
     return `👋 <b>Вітаємо у «Відгуках», ${first}!</b>\n\nТут в одному місці всі скарги та відгуки гостей з усіх точок Кебабці: Google, Glovo, Bolt, Instagram, Telegram, додаток і оператори. Видно, що чекає рішення, хто ним займається і чим закінчилось.\n\n` +
       "Перед першим входом коротка екскурсія: 4 кроки, близько 2 хвилин. Після неї відкриється повний кабінет.\n\n" +
