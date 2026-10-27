@@ -105,10 +105,14 @@ async function system(tgId: number) {
   const { data: closed } = await db.from("as_reminders").select("status").eq("tg_id", tgId).gte("closed_at", fromKyiv(p.y, p.m, 1, 0, 0).toISOString());
   const done = (closed ?? []).filter((r) => r.status === "done").length;
   const missed = (closed ?? []).filter((r) => r.status === "missed").length;
+  const { data: missedRows } = await db.from("as_reminders").select("id,text,due_at").eq("tg_id", tgId).eq("status", "missed")
+    .gte("closed_at", new Date(now.getTime() - 3 * 24 * HOUR).toISOString()).order("due_at");
+  const missedLately = (missedRows ?? []) as Pick<Reminder, "id" | "text" | "due_at">[];
   const data = [
     `Зараз у Києві: ${DAYS[p.wd]}, ${two(p.d)}.${two(p.m)}.${p.y} ${two(p.h)}:${two(p.mi)}.`,
     `Відкриті нагадування (${open.length}):`,
-    ...open.map((r) => `- ${fmt(new Date(r.due_at))} ${r.text}${r.repeat ? ` (${r.repeat})` : ""}${r.status === "sent" ? " — надіслано, чекає «Зроблено»" : ""}`),
+    ...open.map((r) => `- [${r.id}] ${fmt(new Date(r.due_at))} ${r.text}${r.repeat ? ` (${r.repeat})` : ""}${r.status === "sent" ? " — надіслано, чекає «Зроблено»" : ""}`),
+    `Пропущені за 3 дні: ${missedLately.map((r) => `[${r.id}] ${fmt(new Date(r.due_at))} ${r.text}`).join("; ") || "немає"}.`,
     `Цього місяця (з ${month}, бот): зроблено ${done}, пропущено ${missed}.`,
   ].join("\n");
   // The prompt, locations and memory change rarely and are cached; the data block (time, reminders) goes after them.
@@ -160,7 +164,7 @@ async function carryOut(tgId: number, answer: string): Promise<{ text: string; k
   const notes: string[] = [];
   const keyboard: unknown[][] = [];
   for (const line of answer.split("\n")) {
-    const m = line.trim().match(/^#(нагадати|запа[мʼ'’]?ятати|кнопки|crm|нова_тема)\s*:\s*(.*)$/i);
+    const m = line.trim().match(/^#(нагадати|закрити|запа[мʼ'’]?ятати|кнопки|crm|нова_тема)\s*:\s*(.*)$/i);
     if (!m) {
       keep.push(line);
       continue;
@@ -177,6 +181,20 @@ async function carryOut(tgId: number, answer: string): Promise<{ text: string; k
       const { data } = await db.from("as_reminders").insert({ tg_id: tgId, text, due_at: when.due.toISOString(), repeat: when.repeat }).select().single();
       notes.push(`Поставив нагадування: <b>${fmt(when.due)}</b> ${esc(text)}${when.repeat ? ` (${esc(when.repeat)})` : ""}`);
       if (data) keyboard.push([{ text: `✖ Скасувати «${text.slice(0, 24)}»`, callback_data: `x:${data.id}` }]);
+    } else if (cmd === "закрити") {
+      // «#закрити: 12 | зроблено» or «… | скасувати»: the owner said it in words instead of pressing the button.
+      const id = Number(parts[0]);
+      const status = /скас/i.test(parts[1] ?? "") ? "cancelled" : "done";
+      const { data } = await db.from("as_reminders").update({ status, closed_at: new Date().toISOString() })
+        .eq("id", id).eq("tg_id", tgId).in("status", ["pending", "sent", "missed"]).select().maybeSingle();
+      const r = data as Reminder | null;
+      if (!r) {
+        notes.push("Не знайшов такого відкритого нагадування.");
+        continue;
+      }
+      if (r.msg_id) await tg("editMessageReplyMarkup", { chat_id: tgId, message_id: r.msg_id, reply_markup: { inline_keyboard: [] } });
+      if (status === "done") await scheduleNext(r);
+      notes.push(`${status === "done" ? "✓ Позначив зроблено" : "Скасував"}: ${esc(r.text)}`);
     } else if (cmd.startsWith("запа")) {
       const [topic, ...fact] = parts;
       if (topic && fact.length) {
