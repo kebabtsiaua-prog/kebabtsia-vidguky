@@ -214,7 +214,7 @@ async function onCallback(cb: any) {
   if (!u || !chat) return tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Немає доступу" });
   // The owner takes back access from someone who joined through the shared link.
   if (kind === "rm") {
-    if (u.role !== "admin" || id === u.tg_id) return tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Немає доступу" });
+    if (u.role !== "admin" || !(u as SurveyUser).can_grant || id === u.tg_id) return tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Доступ міняють тільки власник, Роман і Юра" });
     const { data: x } = await db.from("users").update({ active: false }).eq("tg_id", id).select("name").maybeSingle();
     await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Доступ прибрано" });
     await tg("editMessageText", { chat_id: chat, message_id: msgId, text: `🚫 Доступ прибрано: ${x?.name ?? ""}. Ця людина більше не бачить апку.` });

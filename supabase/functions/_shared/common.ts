@@ -168,7 +168,9 @@ export async function redeemCode(code: string, from: { id: number; first_name?: 
   // Someone the owner removed does not come back through the shared link.
   const { data: was } = await db.from("users").select("active").eq("tg_id", from.id).maybeSingle();
   if (inv.shared) {
-    if (was && !was.active) return null;
+    if (inv.closed_at || (was && !was.active)) return null;
+    // Someone already in the app keeps their role; the shared link is only for newcomers.
+    if (was) return await getUser(from.id);
     await db.from("invites").update({ uses: (inv.uses ?? 0) + 1 }).eq("code", clean);
     const now = new Date().toISOString();
     // The name and the locations come next, in the app; then the survey and the tour.

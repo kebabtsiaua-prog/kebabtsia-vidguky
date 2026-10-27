@@ -148,7 +148,7 @@ async function surveyState(u: SurveyUser) {
   return {
     locked: locked(u), set, who: SETS[set].who, min: MIN, questions: SETS[set].q, answers: answers ?? [],
     done: !!u.survey_done_at, toured: !!u.tour_done_at,
-    ...(pick ? { pick: true, maxLocs: MAX_LOCS, locations: (await activeLocations()).map((l) => ({ id: l.id, name: l.name, city: l.city })) } : {}),
+    ...(pick ? { pick: true, maxLocs: MAX_LOCS, locations: (await activeLocations()).map((l) => ({ id: l.id, name: l.name, city: l.city })), taken: Object.fromEntries(await takenLocs(u.tg_id)) } : {}),
   };
 }
 
@@ -161,10 +161,19 @@ async function validLocs(ids: unknown): Promise<number[]> {
   must(want.length <= MAX_LOCS, `Не більше ${MAX_LOCS} точок`);
   return want;
 }
+// A location already held by another active location admin can't be picked again (owner 2026-10-26).
+async function takenLocs(except: number): Promise<Map<number, string>> {
+  const { data: rows } = await db.from("user_locations").select("location_id,users!inner(tg_id,name,active,role,locs_confirmed_at)")
+    .neq("tg_id", except).eq("users.active", true).eq("users.role", "loc_admin").not("users.locs_confirmed_at", "is", null);
+  // deno-lint-ignore no-explicit-any
+  return new Map((rows ?? []).map((r: any) => [r.location_id, r.users.name]));
+}
 async function setLocs(tgId: number, ids: number[]) {
   await db.from("user_locations").delete().eq("tg_id", tgId);
   await db.from("user_locations").insert(ids.map((location_id) => ({ tg_id: tgId, location_id })));
 }
+
+const GRANT_ONLY = "Доступ дають тільки власник, Роман і Юра";
 
 // deno-lint-ignore no-explicit-any
 async function handle(u: User, a: string, p: any): Promise<unknown> {
@@ -180,6 +189,12 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
       const name = String(p.name ?? "").trim().replace(/\s+/g, " ");
       must(name.length >= 2 && name.length <= 40, "Напишіть ім'я");
       const ids = await validLocs(p.location_ids);
+      const taken = await takenLocs(u.tg_id);
+      const clash = ids.find((id) => taken.has(id));
+      if (clash) {
+        const l = (await activeLocations()).find((x) => x.id === clash);
+        throw new Fail(`Точку ${l?.name.replace(/^Львів, /, "") ?? ""} вже зайняв(ла) ${taken.get(clash)}. Якщо це помилка, напишіть власнику.`);
+      }
       await setLocs(u.tg_id, ids);
       await db.from("users").update({ name, location_id: ids[0], locs_confirmed_at: new Date().toISOString() }).eq("tg_id", u.tg_id);
       // The owner sees every newcomer and can take the access back with one tap (owner 2026-10-26: start at once, notify).
@@ -353,7 +368,7 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
       return { users: (users ?? []).map((x) => ({ ...x, location_ids: locsOf(x.tg_id) })), invites: invites ?? [] };
     }
     case "invite": {
-      must(u.role === "admin", "Немає доступу");
+      must(u.role === "admin" && su.can_grant, GRANT_ONLY);
       must(ROLES[p.role], "Виберіть роль");
       must(p.role !== "loc_admin" || p.location_id, "Виберіть точку");
       must(String(p.name ?? "").trim(), "Вкажіть ім'я");
@@ -362,17 +377,21 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
       return { code, link: `https://t.me/${await botUsername()}?start=${code}` };
     }
     case "admin_link": {
-      must(u.role === "admin", "Немає доступу");
-      let { data: inv } = await db.from("invites").select("code,uses").eq("shared", true).maybeSingle();
+      must(u.role === "admin" && su.can_grant, GRANT_ONLY);
+      let { data: inv } = await db.from("invites").select("code,uses,closed_at").eq("shared", true).maybeSingle();
       if (!inv) {
         const code = newCode();
         await db.from("invites").insert({ code, role: "loc_admin", name: "Адміни точок (спільне посилання)", shared: true, created_by: u.tg_id });
-        inv = { code, uses: 0 };
+        inv = { code, uses: 0, closed_at: null };
       }
-      return { link: `https://t.me/${await botUsername()}?start=${inv.code}`, uses: inv.uses };
+      return { link: `https://t.me/${await botUsername()}?start=${inv.code}`, uses: inv.uses, closed: !!inv.closed_at };
     }
+    case "admin_link_set":
+      must(u.role === "admin" && su.can_grant, GRANT_ONLY);
+      await db.from("invites").update({ closed_at: p.open ? null : new Date().toISOString() }).eq("shared", true);
+      return { ok: true };
     case "user_locs": {
-      must(u.role === "admin", "Немає доступу");
+      must(u.role === "admin" && su.can_grant, GRANT_ONLY);
       const { data: x } = await db.from("users").select("role").eq("tg_id", p.tg_id).maybeSingle();
       must(x?.role === "loc_admin", "Точки є тільки в адмінів точок");
       const ids = await validLocs(p.location_ids);
@@ -381,11 +400,11 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
       return { ok: true };
     }
     case "invite_del":
-      must(u.role === "admin", "Немає доступу");
+      must(u.role === "admin" && su.can_grant, GRANT_ONLY);
       await db.from("invites").delete().eq("code", p.code).is("used_by", null);
       return { ok: true };
     case "user_off":
-      must(u.role === "admin", "Немає доступу");
+      must(u.role === "admin" && su.can_grant, GRANT_ONLY);
       must(p.tg_id !== u.tg_id, "Себе вимкнути не можна");
       await db.from("users").update({ active: false }).eq("tg_id", p.tg_id);
       return { ok: true };
