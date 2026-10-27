@@ -12,3 +12,6 @@ verify_jwt = false
 
 [functions.poster]
 verify_jwt = false
+
+[functions.asystent]
+verify_jwt = false

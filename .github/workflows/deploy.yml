@@ -50,6 +50,11 @@ jobs:
         run: |
           out=$(curl -fsS "https://$PROJECT_REF.supabase.co/functions/v1/bot?setup=1") && echo "::notice title=Bot::$out" \
             || echo "::warning::Бот ще не підключений: додайте TELEGRAM_BOT_TOKEN у Supabase → Edge Functions → Secrets і запустіть цей workflow ще раз."
+      - name: Connect the assistant bot
+        if: steps.check.outputs.ready == 'true'
+        run: |
+          out=$(curl -sS "https://$PROJECT_REF.supabase.co/functions/v1/asystent?setup=1")
+          echo "::notice title=Assistant bot::$out"
       - name: Announcements
         if: steps.check.outputs.ready == 'true'
         run: |
