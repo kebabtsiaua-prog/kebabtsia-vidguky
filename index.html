@@ -1119,7 +1119,7 @@ function openUserLocs(u,done){
 }
 function openInvite(done){
   var Iv={role:"comms",loc:null},roles=Object.keys(ME.roles);
-  var HINT={admin:"Бачить усе, видає доступи, вносить чеки.",comms:"Бачить усі точки, вносить скарги, записує рішення.",loc_admin:"Бачить лише свою точку, вносить скарги з Glovo і Bolt.",operator:"Бачить усі скарги, вносить скарги з дзвінків і сайту."};
+  var HINT={admin:"Бачить усе, видає доступи, вносить чеки.",comms:"Бачить усі точки, вносить скарги, записує рішення.",loc_admin:"Бачить лише свою точку, вносить скарги з Glovo і Bolt.",operator:"Бачить усі скарги, вносить скарги з сайту. Спершу проходить опитування й екскурсію."};
   var body='<div><div class="lbl">Ім\'я <span class="req">*</span></div><input class="inp" id="iName" placeholder="Наприклад, Олена"></div>'+
     '<div><div class="lbl">Роль</div><div class="opts" id="iRole">'+roles.map(function(r){return '<button class="opt'+(Iv.role===r?" on":"")+'" data-v="'+r+'"><span class="rd"></span>'+esc(ME.roles[r])+'</button>'}).join("")+'</div><div class="muted" style="font-size:12.5px;margin-top:6px" id="iRoleHint"></div></div>'+
     '<div id="iLocF" hidden><div class="lbl">Точка <span class="req">*</span></div><button class="pick empty" id="iLoc"><span>Вибрати точку</span>'+I("down")+'</button></div><div id="iOut"></div>';

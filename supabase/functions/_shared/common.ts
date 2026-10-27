@@ -26,7 +26,7 @@ export const ROLES: Record<string, string> = {
 // Channels each role may add. Missing = all channels.
 const ROLE_CHANNELS: Record<string, string[]> = {
   loc_admin: ["Glovo", "Bolt"],
-  operator: ["Оператори", "Сайт"],
+  operator: ["Сайт"], // owner 2026-10-27: operators handle only the website for now
 };
 export function channelsFor(role: string): string[] {
   return ROLE_CHANNELS[role] ?? CHANNELS;
@@ -190,6 +190,8 @@ export async function redeemCode(code: string, from: { id: number; first_name?: 
     location_id: inv.location_id,
     active: true,
     // A tour-only invite (survey_set 'tour'): no questions, the cabinet opens after the tour.
+    // Operators pass their survey and the tour before the cabinet opens (owner 2026-10-27).
+    ...(inv.role === "operator" ? { survey_due_at: new Date().toISOString() } : {}),
     ...(inv.survey_set === "tour" ? { survey_set: "tour", survey_due_at: new Date().toISOString(), survey_done_at: new Date().toISOString(), morning_report: true } : {}),
   };
   const { data } = await db.from("users").upsert({ ...row, ...(inv.role === "loc_admin" && inv.location_id ? { locs_confirmed_at: new Date().toISOString() } : {}) }).select().single();
