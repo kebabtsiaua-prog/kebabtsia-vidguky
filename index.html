@@ -517,6 +517,11 @@ input.pick{font:inherit;font-size:13.5px;color:var(--fg)}
 .pk small{display:block;color:var(--hint);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pk.on{border-color:var(--acc);background:var(--acc-soft)}.pk.on .bx{background:var(--acc);border-color:var(--acc)}
 .pk:disabled{opacity:.45;cursor:default}
+.al-off{display:flex;align-items:center;gap:12px;border-top:1px solid var(--line);padding-top:12px;font-size:13px;line-height:1.45}.al-off .muted{flex:1}.al-off .btn2{flex:none}
+.btn2.bad{color:var(--bad)}
+.free{display:flex;flex-wrap:wrap;gap:6px}.free span{background:var(--warn-soft);color:var(--warn);border-radius:999px;padding:5px 11px;font-size:13px;font-weight:600}
+@media(max-width:760px){.al-off{flex-direction:column;align-items:stretch}}
+.pk.tk{opacity:.6;background:transparent;border-style:dashed}.pk.tk small{white-space:normal}
 .pk-sum{display:flex;flex-wrap:wrap;gap:6px}.pk-sum span{background:var(--acc-soft);color:var(--acc-fg);border-radius:999px;padding:5px 11px;font-size:13px;font-weight:600}
 @media(max-width:760px){.pk-grid{grid-template-columns:1fr 1fr}.pk{padding:9px 10px}}
 </style>
@@ -1074,10 +1079,17 @@ function openUsers(){
   openPanel({title:"Доступи",body:'<div class="empty">Завантаження…</div>',mount:function(el){
     var b=el.querySelector(".dr-b");
     function draw(){api("users").then(function(x){
-      var h='<div class="row2"><button class="btnk btna" id="newInv">'+I("plus")+'Новий доступ</button><button class="btn2" id="admLink">'+I("send")+'Посилання для адмінів точок</button></div>';
-      h+='<div class="sect">Користуються · '+x.users.length+'</div><div>'+x.users.map(function(u){return '<div class="li"><span class="ava">'+esc(initials(u.name))+'</span><span class="tx">'+esc(u.name)+'<small>'+esc(ME.roles[u.role])+(u.role==="loc_admin"?" · "+esc(locsOfUser(u)):"")+(u.username?" · @"+esc(u.username):"")+'</small></span>'+(u.role==="loc_admin"?'<button class="lk2" data-locs="'+u.tg_id+'">Точки</button>':"")+(u.tg_id!==ME.user.tg_id?'<button class="lk2" data-off="'+u.tg_id+'">Вимкнути</button>':"")+'</div>'}).join("")+'</div>';
+      // Only the owner, Роман and Юра give access (owner 2026-10-27).
+      var G=!!ME.user.can_grant;
+      var h=G?'<div class="row2"><button class="btnk btna" id="newInv">'+I("plus")+'Новий доступ</button><button class="btn2" id="admLink">'+I("send")+'Посилання для адмінів точок</button></div>'
+        :'<div class="muted" style="font-size:13px">Доступ дають тільки власник, Роман і Юра.</div>';
+      h+='<div class="sect">Користуються · '+x.users.length+'</div><div>'+x.users.map(function(u){return '<div class="li"><span class="ava">'+esc(initials(u.name))+'</span><span class="tx">'+esc(u.name)+'<small>'+esc(ME.roles[u.role])+(u.role==="loc_admin"?" · "+esc(locsOfUser(u)):"")+(u.username?" · @"+esc(u.username):"")+(u.can_grant?" · дає доступ":"")+'</small></span>'+(G&&u.role==="loc_admin"?'<button class="lk2" data-locs="'+u.tg_id+'">Точки</button>':"")+(G&&u.tg_id!==ME.user.tg_id?'<button class="lk2" data-off="'+u.tg_id+'">Вимкнути</button>':"")+'</div>'}).join("")+'</div>';
       USERS=x.users;
-      if(x.invites.length)h+='<div class="sect">Коди, які ще не використали</div><div>'+x.invites.map(function(i){return '<div class="li"><span class="tx"><b>'+esc(i.code)+'</b> · '+esc(i.name)+'<small>'+esc(ME.roles[i.role])+(i.location_id&&LOCNAME[i.location_id]?" · "+esc(shortLoc(LOCNAME[i.location_id])):"")+'</small></span><button class="lk2" data-del="'+esc(i.code)+'">Видалити</button></div>'}).join("")+'</div>';
+      // Locations no location admin has picked yet (owner 2026-10-27: see which are left).
+      var held={};x.users.forEach(function(u){if(u.role==="loc_admin")(u.location_ids&&u.location_ids.length?u.location_ids:u.location_id?[u.location_id]:[]).forEach(function(id){held[id]=1})});
+      var free=LOCS.filter(function(l){return !held[LOCBY[l].id]});
+      h+='<div class="sect">Точки без адміна · '+free.length+'</div>'+(free.length?'<div class="free">'+free.map(function(l){return '<span>'+esc(shortLoc(l))+'</span>'}).join("")+'</div>':'<div class="muted" style="font-size:13px">Усі точки вже вибрані.</div>');
+      if(G&&x.invites.length)h+='<div class="sect">Коди, які ще не використали</div><div>'+x.invites.map(function(i){return '<div class="li"><span class="tx"><b>'+esc(i.code)+'</b> · '+esc(i.name)+'<small>'+esc(ME.roles[i.role])+(i.location_id&&LOCNAME[i.location_id]?" · "+esc(shortLoc(LOCNAME[i.location_id])):"")+'</small></span><button class="lk2" data-del="'+esc(i.code)+'">Видалити</button></div>'}).join("")+'</div>';
       b.innerHTML=h;
     }).catch(function(e){b.innerHTML='<div class="empty">'+esc(e.message)+'</div>'})}
     b.addEventListener("click",function(e){var t=e.target;
@@ -1098,17 +1110,22 @@ function openAdminLink(){
     api("admin_link").then(function(x){
       var msg="Вітаю! У нас запрацювала апка «Відгуки»: тут збираються всі скарги гостей з Glovo, Bolt, Google та інших сервісів по ваших точках. Відкрийте посилання, напишіть ім'я і виберіть точки, за які відповідаєте. Далі буде коротке опитування про те, як ви зараз працюєте зі скаргами, близько 10 хвилин, і екскурсія по апці. Відповідайте детально, своїми словами, це важливо.\n"+x.link;
       b.innerHTML='<div class="muted" style="font-size:13px;line-height:1.5">Одне посилання для всіх адмінів точок. Кожен напише ім\'я і вибере свої точки, до 4. Вам у бот прийде, хто і які точки вибрав, з кнопкою «Прибрати доступ». Зайшли за посиланням: <b>'+x.uses+'</b></div>'+
+        (x.closed?'<div class="sv-note">'+I("lock")+'<div>Посилання вимкнено: за ним більше ніхто не зайде.</div></div>':'')+
         '<div><div class="lbl">Повідомлення для адмінів</div><textarea class="inp" id="alMsg" rows="9" readonly style="resize:none">'+esc(msg)+'</textarea></div>'+
-        '<div class="row2"><button class="btnk btna" id="alCopy">Скопіювати повідомлення</button><button class="btn2" id="alLink">Тільки посилання</button></div>';
+        '<div class="row2"><button class="btnk btna" id="alCopy">Скопіювати повідомлення</button><button class="btn2" id="alLink">Тільки посилання</button></div>'+
+        '<div class="al-off"><div class="muted">'+(x.closed?'Увімкніть, якщо ще хтось з адмінів не встиг зайти.':'Коли всі адміни зайдуть, вимкніть посилання, щоб за пересланим посиланням ніхто чужий не зайшов.')+'</div><button class="btn2'+(x.closed?'':' bad')+'" id="alOff">'+(x.closed?'Увімкнути посилання':'Вимкнути посилання')+'</button></div>';
       function copy(t){(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){toast("Скопійовано")}).catch(function(){toast("Виділіть текст і скопіюйте вручну")})}
       b.querySelector("#alCopy").addEventListener("click",function(){copy(msg)});
       b.querySelector("#alLink").addEventListener("click",function(){copy(x.link)});
+      b.querySelector("#alOff").addEventListener("click",function(){var btn=this;if(!x.closed&&!confirm("Вимкнути посилання? Хто вже зайшов, залишиться."))return;busy(btn,true);
+        api("admin_link_set",{open:x.closed}).then(function(){toast(x.closed?"Посилання знову працює":"Посилання вимкнено");closePanel();openAdminLink()}).catch(function(e){busy(btn,false);toast(e.message)})});
     }).catch(function(e){b.innerHTML='<div class="empty">'+esc(e.message)+'</div>'})}});
 }
+function heldBy(id,u){var o=(USERS||[]).filter(function(z){return z.tg_id!==u.tg_id&&z.role==="loc_admin"&&(z.location_ids||[]).indexOf(id)>=0})[0];return o?o.name:""}
 function openUserLocs(u,done){
   var sel=(u.location_ids&&u.location_ids.length?u.location_ids:u.location_id?[u.location_id]:[]).slice();
   function body(){return '<div class="muted" style="font-size:13px">'+esc(u.name)+' бачить скарги тільки цих точок. До 4.</div><div>'+LOCS.map(function(l){var id=LOCBY[l].id,on=sel.indexOf(id)>=0;
-    return '<button class="li'+(on?" on":"")+'" data-lid="'+id+'"><span class="tx"><b style="font-weight:600">'+esc(shortLoc(l))+'</b><small>'+esc(locSub(l))+'</small></span>'+(on?'<span class="ck">✓</span>':"")+'</button>'}).join("")+'</div>'}
+    return '<button class="li'+(on?" on":"")+'" data-lid="'+id+'"><span class="tx"><b style="font-weight:600">'+esc(shortLoc(l))+'</b><small>'+esc(locSub(l))+(heldBy(id,u)?" · уже в "+esc(heldBy(id,u)):"")+'</small></span>'+(on?'<span class="ck">✓</span>':"")+'</button>'}).join("")+'</div>'}
   openPanel({title:"Точки: "+u.name,narrow:true,body:body(),foot:'<span class="sp" id="ulN"></span><button class="btnk" id="ulSave">Зберегти</button>',mount:function(el){
     var b=el.querySelector(".dr-b"),n=el.querySelector("#ulN");function cnt(){n.textContent="Вибрано "+sel.length+" з 4"}cnt();
     b.addEventListener("click",function(e){var o=e.target.closest("[data-lid]");if(!o)return;var id=+o.dataset.lid,k=sel.indexOf(id);
@@ -1238,8 +1255,8 @@ function renderSurvey(){
     var cities=Object.keys(by).sort(function(a,b){return by[b].length-by[a].length||a.localeCompare(b,"uk")});
     var multi=cities.filter(function(c){return by[c].length>1}),solo=cities.filter(function(c){return by[c].length===1});
     function chip(l){var m=/^(.*?)(?:\s*\(([^)]*)\))?\s*$/.exec(l.name),base=m[1],nick=m[2]||"",sh=base.indexOf(l.city+", ")===0?base.slice(l.city.length+2):base,on=SVY.locs.indexOf(l.id)>=0;
-      var sub=[nick,sh!==l.city?l.city:""].filter(Boolean).join(" · ");
-      return '<button class="pk'+(on?" on":"")+'" data-pk="'+l.id+'"'+(!on&&SVY.locs.length>=max?" disabled":"")+'><span class="bx">'+(on?I("check"):"")+'</span><span class="t"><b>'+esc(sh)+'</b>'+(sub?'<small>'+esc(sub)+'</small>':"")+'</span></button>'}
+      var tk=(s.taken||{})[l.id],sub=tk?"Зайнято: "+tk:[nick,sh!==l.city?l.city:""].filter(Boolean).join(" · ");
+      return '<button class="pk'+(on?" on":"")+(tk?" tk":"")+'" data-pk="'+l.id+'"'+(tk||!on&&SVY.locs.length>=max?" disabled":"")+'><span class="bx">'+(on?I("check"):"")+'</span><span class="t"><b>'+esc(sh)+'</b>'+(sub?'<small>'+esc(sub)+'</small>':"")+'</span></button>'}
     var grid=multi.map(function(c){return '<div class="pk-city">'+esc(c)+'</div><div class="pk-grid">'+by[c].map(chip).join("")+'</div>'}).join("")+
       (solo.length?'<div class="pk-city">Інші міста</div><div class="pk-grid">'+solo.map(function(c){return chip(by[c][0])}).join("")+'</div>':"");
     html=svFrame(steps,-1,"",

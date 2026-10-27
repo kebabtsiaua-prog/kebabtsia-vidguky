@@ -52,6 +52,7 @@ export type SurveyUser = User & {
   survey_done_at: string | null;
   tour_done_at: string | null;
   locs_confirmed_at?: string | null;
+  can_grant?: boolean;
 };
 
 export function setOf(u: SurveyUser): string {
