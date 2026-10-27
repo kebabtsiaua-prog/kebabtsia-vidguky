@@ -139,6 +139,48 @@ async function exportMonth(u: User, month: string) {
   must((await res.json()).ok, "Не вдалося надіслати файл. Спершу відкрийте чат з ботом і натисніть «Старт».");
 }
 
+// All survey answers and app remarks in one Excel file, sent to the asker in Telegram (owner 2026-10-27: a clean
+// file Claude can read in full). One sheet per question set, the questions written out in full.
+async function sendSurveyFile(u: User) {
+  const { data: users } = await db.from("users").select("*").eq("active", true).order("created_at");
+  const { data: answers } = await db.from("survey_answers").select("tg_id,q,answer,asked,updated_at").order("q");
+  const { data: feedback } = await db.from("app_feedback").select("*").order("created_at");
+  const { data: ul } = await db.from("user_locations").select("tg_id,location_id");
+  const locName = new Map((await activeLocations()).map((l) => [l.id, l.name]));
+  const kyiv = (iso?: string | null) => iso ? new Date(iso).toLocaleString("uk-UA", { timeZone: "Europe/Kyiv", dateStyle: "short", timeStyle: "short" }) : "";
+  const people = ((users ?? []) as SurveyUser[]).filter((x) => setOf(x) !== "none");
+  const locsOf = (x: SurveyUser) => (ul ?? []).filter((r) => r.tg_id === x.tg_id).map((r) => locName.get(r.location_id) ?? "").filter(Boolean).join(", ");
+  const wb = XLSX.utils.book_new();
+  const add = (name: string, aoa: unknown[][], cols: number[]) => {
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = cols.map((wch) => ({ wch }));
+    ws["!autofilter"] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: Math.max(aoa.length - 1, 0), c: cols.length - 1 } }) };
+    XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+  };
+  add("Хто пройшов", [["Ім'я", "Роль", "Набір питань", "Точки", "Запрошено", "Опитування", "Екскурсія", "Відповідей"],
+    ...people.map((x) => [x.name, ROLES[x.role] ?? x.role, SETS[setOf(x)]?.who ?? setOf(x), locsOf(x), kyiv(x.survey_due_at), kyiv(x.survey_done_at) || "ще ні", kyiv(x.tour_done_at) || "ще ні",
+      (answers ?? []).filter((a) => a.tg_id === x.tg_id).length])], [22, 18, 18, 40, 16, 16, 16, 11]);
+  for (const [key, set] of Object.entries(SETS)) {
+    if (!set.q.length) continue;
+    const rows: unknown[][] = [];
+    for (const x of people.filter((x) => setOf(x) === key)) {
+      for (const a of (answers ?? []).filter((a) => a.tg_id === x.tg_id)) {
+        rows.push([x.name, locsOf(x), a.q + 1, set.q[a.q]?.t ?? "", set.q[a.q]?.q ?? "", a.answer, a.asked ?? "", kyiv(a.updated_at)]);
+      }
+    }
+    if (rows.length) add(set.who, [["Хто", "Точки", "№", "Тема", "Питання", "Відповідь", "Уточнення від ШІ", "Коли"], ...rows], [20, 30, 4, 18, 50, 90, 40, 15]);
+  }
+  add("Зауваження до апки", [["Коли", "Хто", "Роль", "Зауваження"],
+    ...(feedback ?? []).map((f) => [kyiv(f.created_at), f.name, ROLES[((users ?? []) as SurveyUser[]).find((x) => x.tg_id === f.tg_id)?.role ?? ""] ?? "", f.text])], [16, 22, 18, 100]);
+  const bytes: ArrayBuffer = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+  const form = new FormData();
+  form.append("chat_id", String(u.tg_id));
+  form.append("caption", `Опитування команди: ${people.filter((x) => x.survey_done_at).length} з ${people.length} пройшли. Перешліть цей файл Claude.`);
+  form.append("document", new Blob([bytes]), `opytuvannia-${kyivToday()}.xlsx`);
+  const res = await fetch(`https://api.telegram.org/bot${Deno.env.get("TELEGRAM_BOT_TOKEN")}/sendDocument`, { method: "POST", body: form });
+  must((await res.json()).ok, "Не вдалося надіслати файл. Спершу відкрийте чат з ботом і натисніть «Старт».");
+}
+
 async function surveyState(u: SurveyUser) {
   const set = setOf(u);
   if (!u.survey_due_at || set === "none" || !SETS[set]) return { locked: false };
@@ -263,6 +305,10 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
         feedback: feedback ?? [],
       };
     }
+    case "survey_file":
+      must(u.role === "admin", "Немає доступу");
+      await sendSurveyFile(u);
+      return { ok: true };
     case "survey_invite": {
       must(u.role === "admin", "Немає доступу");
       const ids: number[] = (Array.isArray(p.tg_ids) ? p.tg_ids : []).map(Number).filter(Boolean);

@@ -1371,6 +1371,7 @@ function openSurveyTeam(){
       var ppl=x.people.filter(function(p){return p.set!=="none"});
       var done=ppl.filter(function(p){return p.done&&p.toured}).length,wait=ppl.filter(function(p){return !p.due});
       var h='<div class="muted" style="font-size:13px">Пройшли '+done+' з '+ppl.length+'. Кабінет закривається тільки для запрошених, до кінця опитування й екскурсії. Бот нагадує щоранку.</div>';
+      h+='<button class="btn2 wide" id="svFile">'+I("send")+'Надіслати всі відповіді файлом</button>';
       if(wait.length)h+='<button class="btnk btna wide" id="svAll">'+I("send")+'Запросити всіх, хто ще не запрошений · '+wait.length+'</button>';
       h+='<div class="sect">Команда · '+ppl.length+'</div><div>'+ppl.map(function(p){
         return '<div class="li"><span class="ava">'+esc(initials(p.name))+'</span><span class="tx">'+esc(p.name)+'<small>'+esc((x.sets[p.set]||{}).who||"")+'</small></span>'+svStatus(p)+
@@ -1379,6 +1380,7 @@ function openSurveyTeam(){
       b.innerHTML=h;
     }).catch(function(e){b.innerHTML='<div class="empty">'+esc(e.message)+'</div>'})}
     b.addEventListener("click",function(e){var t=e.target;
+      var sf=t.closest("#svFile");if(sf){busy(sf,true);api("survey_file").then(function(){busy(sf,false);toast("Файл у чаті з ботом")}).catch(function(x){busy(sf,false);toast(x.message)});return}
       var inv=t.closest("[data-inv]");if(inv){if(!confirm("Надіслати запрошення? Кабінет цієї людини закриється до кінця опитування."))return;busy(inv,true);api("survey_invite",{tg_ids:[+inv.dataset.inv]}).then(function(r){toast(r.sent?"Запрошення надіслано":"Не вдалося надіслати: людина ще не відкривала бота");draw()}).catch(function(x){busy(inv,false);toast(x.message)});return}
       if(t.closest("#svAll")){var ids=SVT.people.filter(function(p){return p.set!=="none"&&!p.due}).map(function(p){return p.tg_id});if(!confirm("Надіслати запрошення "+ids.length+" людям? Їхні кабінети закриються до кінця опитування."))return;var bb=t.closest("#svAll");busy(bb,true);api("survey_invite",{tg_ids:ids}).then(function(r){toast("Надіслано: "+r.sent);draw()}).catch(function(x){busy(bb,false);toast(x.message)});return}
       var an=t.closest("[data-ans]");if(an)openAnswers(+an.dataset.ans)});
