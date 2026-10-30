@@ -200,6 +200,7 @@ async function onMessage(msg: any) {
         for (const c of r.complaints) lines.push(`· №${c.id} ${esc(c.loc)}`);
         lines.push("", "Адміни точок отримали сповіщення. Вам, Роману та Юрі завтра зранку прийде звіт за день.");
       } else lines.push("", "Нових скарг немає.");
+      if (r.existing) lines.push(`Уже були в апці раніше: ${r.existing}.`);
     }
     if (r.unknown.length) lines.push("", `⚠️ Не знайшов точку для: ${r.unknown.map(esc).join("; ")}. Їхні скарги не додано, напишіть розробнику.`);
     await tg("sendMessage", { chat_id: chat, parse_mode: "HTML", text: lines.join("\n"), reply_markup: { inline_keyboard: [[{ text: "Відкрити чергу", web_app: { url: tabUrl("queue") } }]] } });
