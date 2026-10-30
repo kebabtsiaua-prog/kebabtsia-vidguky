@@ -2,6 +2,7 @@
 // Two ways in: the owner presses «Завантажити» on the portal, or every evening the extension opens the portal itself.
 const API = "https://obpmsgxanigythxkvrmh.supabase.co/functions/v1/bot?glovo_csv=1";
 const REPORTS = "https://portal.glovoapp.com/report-builder";
+const BOLT = "https://foodpartner.bolt.eu/rating-and-feedback/feedback";
 const AUTO_AT = { hour: 18, minute: 50 }; // the email with the report comes at about 18:30 Kyiv time
 
 const looksLikeReport = (t) => /замовлен|order/i.test(t.slice(0, 2000)) && /відгук|review/i.test(t.slice(0, 2000));
@@ -60,7 +61,27 @@ chrome.runtime.onMessage.addListener((m, sender) => {
   if (m.type === "csv") send(m.csv, m.diag);
   if (m.type === "run") runAuto();
   if (m.type === "diag") post({ diag: m.diag });
+  if (m.type === "bolt") sendBolt(m.store, m.rows);
 });
+
+// Rows read from the Bolt Merchant reviews page.
+async function sendBolt(store, rows) {
+  const { key } = await chrome.storage.local.get("key");
+  if (!key) return;
+  try {
+    const res = await fetch(API.replace("glovo_csv=1", "bolt=1"), { method: "POST", headers: { "content-type": "application/json", "x-glovo-key": key }, body: JSON.stringify({ store, rows }) });
+    const out = await res.json();
+    if (out.ok) await chrome.storage.local.set({ bolt: { text: `Bolt «${store}»: прочитано ${out.rows} відгуків, нових ${out.fresh}, нових скарг ${out.complaints}.`, at: new Date().toISOString() }, boltDay: today() });
+  } catch (e) {
+    console.error("bolt", e);
+  }
+}
+
+// Once a day the Bolt reviews page is opened in the background for a minute, so bolt.js reads it.
+async function runBolt() {
+  const tab = await chrome.tabs.create({ url: BOLT, active: false });
+  setTimeout(() => chrome.tabs.remove(tab.id).catch(() => {}), 60000);
+}
 
 // A download from the portal: fetch the same link (the browser is logged in) and send its text.
 chrome.downloads.onCreated.addListener(async (item) => {
@@ -110,9 +131,10 @@ function nextAuto() {
 }
 
 async function catchUp() {
-  const { lastDay, autoTried } = await chrome.storage.local.get(["lastDay", "autoTried"]);
+  const { lastDay, autoTried, boltDay } = await chrome.storage.local.get(["lastDay", "autoTried", "boltDay"]);
   const late = new Date().getHours() * 60 + new Date().getMinutes() >= AUTO_AT.hour * 60 + AUTO_AT.minute;
   if (late && lastDay !== today() && autoTried !== today()) runAuto();
+  if (late && boltDay !== today()) { await chrome.storage.local.set({ boltDay: today() }); runBolt(); }
 }
 
 chrome.tabs.onRemoved.addListener((id) => { if (id === autoTab) autoTab = null; }); // closed by hand: the next press starts again

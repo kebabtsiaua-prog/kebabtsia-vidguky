@@ -1,7 +1,8 @@
 const $ = (id) => document.getElementById(id);
 
 async function show() {
-  const { key, status } = await chrome.storage.local.get(["key", "status"]);
+  const { key, status, bolt } = await chrome.storage.local.get(["key", "status", "bolt"]);
+  $("bolt").textContent = bolt ? `${new Date(bolt.at).toLocaleString("uk-UA", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}: ${bolt.text}` : "";
   $("keybox").style.display = key ? "none" : "";
   $("run").disabled = !key;
   const s = $("status");

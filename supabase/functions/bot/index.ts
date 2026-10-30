@@ -9,6 +9,7 @@ import {
   savePhoto, tabUrl, tg, tgFile, type User, webhookSecret,
 } from "../_shared/common.ts";
 import { recipients } from "../_shared/uployal.ts";
+import { type BoltRow, importBolt } from "../_shared/bolt.ts";
 import { alertTake, dailyReport, type ImportResult, importGlovo, isGlovoReport, remindGlovo, take, takeButtonFor } from "../_shared/glovo.ts";
 import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, ownerId, setOf, type SurveyUser } from "../_shared/survey.ts";
 
@@ -553,11 +554,17 @@ async function setup(req: Request): Promise<Response> {
 
 // The Chrome extension on the owner's computer sends the report it downloaded from the Glovo portal.
 // Without a file it sends only what it saw on the page, so the auto-download can be fixed from the logs.
-async function glovoUpload(req: Request): Promise<Response> {
+// The key from /glovo_key: only the owner's extension may send reports.
+async function extensionUser(req: Request) {
   const key = req.headers.get("x-glovo-key")?.trim() ?? "";
   const tgId = Number(key.split(".")[0]);
   const u = tgId ? await getUser(tgId) : null;
-  if (!u?.active || u.role !== "admin" || key !== await glovoKey(tgId)) return Response.json({ ok: false, error: "key" }, { status: 403 });
+  return u?.active && u.role === "admin" && key === await glovoKey(tgId) ? u : null;
+}
+
+async function glovoUpload(req: Request): Promise<Response> {
+  const u = await extensionUser(req);
+  if (!u) return Response.json({ ok: false, error: "key" }, { status: 403 });
   const { csv, diag } = await req.json().catch(() => ({}));
   console.log("glovo extension", JSON.stringify(diag ?? null).slice(0, 16000));
   if (csv === undefined) return Response.json({ ok: true, logged: true });
@@ -567,9 +574,31 @@ async function glovoUpload(req: Request): Promise<Response> {
   return Response.json({ ok: true, days: r.days, rows: r.rows, fresh: r.fresh, complaints: r.complaints.length });
 }
 
+// The extension reads the Bolt Merchant reviews table whenever that page is open and sends the rows here.
+// The owner hears about it only when something new turned up: a complaint or a store we do not know.
+async function boltUpload(req: Request): Promise<Response> {
+  const u = await extensionUser(req);
+  if (!u) return Response.json({ ok: false, error: "key" }, { status: 403 });
+  const { store, rows } = await req.json().catch(() => ({})) as { store?: string; rows?: BoltRow[] };
+  if (!store || !Array.isArray(rows)) return Response.json({ ok: false, error: "no rows" }, { status: 400 });
+  const r = await importBolt(store, rows);
+  if (r.complaints.length || (!r.known && r.fresh)) {
+    const lines = [`🟢 <b>Відгуки Bolt · ${esc(r.store)}</b>`, "🧩 Розширення Chrome прочитало сторінку Bolt.", ""];
+    if (!r.known) lines.push(`⚠️ Не знаю, яка це точка: «${esc(r.store)}». Скарги не додано, напишіть розробнику.`);
+    else {
+      lines.push(`Нових відгуків: <b>${r.fresh}</b>. Нові скарги (${r.complaints.length}):`);
+      for (const c of r.complaints) lines.push(`· №${c.id} ${esc(c.loc)}`);
+      lines.push("", "Адміни точки отримали сповіщення.");
+    }
+    await tg("sendMessage", { chat_id: u.tg_id, parse_mode: "HTML", text: lines.join("\n"), reply_markup: { inline_keyboard: [[{ text: "Відкрити чергу", web_app: { url: tabUrl("queue") } }]] } });
+  }
+  return Response.json({ ok: true, ...r, complaints: r.complaints.length });
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method === "POST" && new URL(req.url).searchParams.has("glovo_csv")) return await glovoUpload(req);
+    if (req.method === "POST" && new URL(req.url).searchParams.has("bolt")) return await boltUpload(req);
     if (req.method === "GET") {
       if (new URL(req.url).searchParams.has("chats")) return Response.json(await listChats());
       if (new URL(req.url).searchParams.has("digest")) return Response.json(await digest());
