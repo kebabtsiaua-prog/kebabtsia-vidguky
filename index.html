@@ -625,7 +625,7 @@ function ingest(){
   WHO=D.who||[];PEOPLE=D.people||{};
   items=D.items.filter(function(r){return LOCNAME[r.location_id]}).map(function(r){var mk=r.happened_on.slice(0,7);
     return {id:r.id,m:MK.indexOf(mk),day:+r.happened_on.slice(8,10),loc:LOCNAME[r.location_id],ch:r.channel,text:r.text,themes:r.topics||[],result:r.result,solution:r.solution,who:r.who,
-      photo:r.photo_path,rating:r.rating,date:r.happened_on,source:r.source,by:r.created_by,created:r.created_at,resolved:r.resolved_at}});
+      photo:r.photo_path,rating:r.rating,date:r.happened_on,source:r.source,by:r.created_by,created:r.created_at,resolved:r.resolved_at,takenBy:r.taken_by,taken:r.taken_at}});
   G={};D.google.forEach(function(g){var n=LOCNAME[g.location_id];if(!n)return;var i=MK.indexOf(String(g.month).slice(0,7));if(i<0)return;
     (G[n]=G[n]||[])[i]={total:g.total,nw:g.new_reviews,pos:g.positive,neg:g.negative,start:numOr(g.start_rating),end:numOr(g.end_rating)}});
   CHK={};D.checks.forEach(function(c){var n=LOCNAME[c.location_id];if(!n)return;(CHK[n]=CHK[n]||{})[String(c.month).slice(0,7)]=c.checks});
@@ -668,6 +668,7 @@ function addedBy(r){
   if(r.by&&PEOPLE[r.by])return {name:PEOPLE[r.by],auto:false,how:r.source==="bot"?"через бота":"в апці"};
   if(r.source==="google")return {name:"Google",auto:true,how:"автоматично"};
   if(r.source==="uployal")return {name:"Оцінка в додатку",auto:true,how:"автоматично"};
+  if(r.source==="glovo")return {name:"Звіт Glovo",auto:true,how:"автоматично"};
   if(r.source==="sheet")return {name:"Таблиця звітності",auto:true,how:"перенесено з"};
   return {name:r.source==="bot"?"Бот":"—",auto:true,how:""};
 }
@@ -953,7 +954,7 @@ function openItem(idn){
   var ctx=S.ctx.indexOf(idn)>=0?S.ctx.slice():[idn],pos=ctx.indexOf(idn);
   var staff=isStaff(),st={result:r.result,who:r.who||(staff?ME.user.name:"")};
   var p=parts(r.loc),a=addedBy(r),open=isOpen(r),ag=age(r);
-  var body='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+(open?'<span class="pill '+(ag>LATE?"late":"open")+'">'+(ag?"Чекає "+ag+" "+plural(ag,"день","дні","днів"):"Нова, чекає рішення")+'</span>':'<span class="pill done">Вирішено'+(r.who?" · "+esc(r.who):"")+'</span>')+
+  var body='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+(open?(r.taken?'<span class="pill done">В роботі · '+esc(PEOPLE[r.takenBy]||"адмін")+'</span>':'<span class="pill '+(ag>LATE?"late":"open")+'">'+(ag?"Чекає "+ag+" "+plural(ag,"день","дні","днів"):"Нова, чекає рішення")+'</span>'):'<span class="pill done">Вирішено'+(r.who?" · "+esc(r.who):"")+'</span>')+
     '<span class="byw'+(a.auto?" auto":"")+'" style="margin-left:auto"><span class="ava">'+(a.auto?I("spark"):esc(initials(a.name)))+'</span>Додав(ла): '+esc(a.name)+'</span></div>';
   body+='<div class="mini"><div><div class="l">Точка</div><b>'+esc(p.short)+'</b><div class="s">'+esc(locSub(r.loc))+'</div>'+(oneLoc()?"":'<button data-openloc="'+esc(r.loc)+'">Сторінка точки →</button>')+'</div>'+
     '<div><div class="l">Канал</div><b>'+cb(r.ch,1)+esc(r.ch)+'</b><div class="s">'+(r.rating?stars(r.rating)+' оцінка '+r.rating+' з 5':"відгук "+r.day+" "+GEN[mNum(r.date)])+'</div></div></div>';
@@ -970,6 +971,7 @@ function openItem(idn){
   // history from what the server knows: when it came in and who added it, when it was resolved and by whom
   var tl=[];
   if(!open)tl.push(['Вирішено: '+esc(r.result)+(r.who?' · '+esc(r.who):""),dLong(r.resolved)]);
+  if(r.taken)tl.push(['Взяв(ла) в роботу: '+esc(PEOPLE[r.takenBy]||"адмін точки"),dLong(r.taken)]);
   tl.push([r.source==="sheet"?'Перенесено з таблиці звітності':a.auto?'Надійшла '+esc(a.how)+': '+esc(a.name):'Додав(ла) '+esc(a.name)+(a.how?' '+esc(a.how):""),dLong(r.created)]);
   if(r.created&&kyivDay(r.created)!==r.date)tl.push(['Гість залишив відгук',r.day+" "+GEN[mNum(r.date)]]);
   body+='<div><div class="lbl">Історія</div><div class="tl">'+tl.map(function(x){return '<div>'+x[0]+(x[1]?'<small>'+x[1]+'</small>':"")+'</div>'}).join("")+'</div></div>';

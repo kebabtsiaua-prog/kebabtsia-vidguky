@@ -53,7 +53,7 @@ async function monthData(u: User, month: string) {
   const [, to] = monthRange(month);
   const [sixFrom] = monthRange(shiftMonth(month, -5));
   const locations = await activeLocations();
-  const cols = "id,location_id,channel,happened_on,text,topics,solution,result,who,photo_path,rating,source,created_by,created_at,resolved_at";
+  const cols = "id,location_id,channel,happened_on,text,topics,solution,result,who,photo_path,rating,source,created_by,created_at,resolved_at,taken_by,taken_at";
   const { data: items } = await scope(db.from("complaints").select(cols), u)
     .gte("happened_on", from).lt("happened_on", to).order("happened_on", { ascending: false }).order("id", { ascending: false });
   const { data: hist } = await scope(db.from("complaints").select("location_id,happened_on"), u)
@@ -83,8 +83,8 @@ async function monthData(u: User, month: string) {
     if (r.rating <= 3) x.neg++;
   }
   const { data: staff } = await db.from("users").select("name,role").eq("active", true).in("role", ["admin", "comms"]);
-  // Names of whoever added a complaint, so the app can always show «хто додав» (also for people whose access was switched off).
-  const authors = [...new Set((items ?? []).map((r: { created_by: number | null }) => r.created_by).filter(Boolean))];
+  // Names of whoever added or took a complaint, so the app can always show «хто додав» (also for people whose access was switched off).
+  const authors = [...new Set((items ?? []).flatMap((r: { created_by: number | null; taken_by: number | null }) => [r.created_by, r.taken_by]).filter(Boolean))];
   const { data: who } = authors.length ? await db.from("users").select("tg_id,name").in("tg_id", authors) : { data: [] };
   const people: Record<string, string> = {};
   for (const p of who ?? []) people[p.tg_id] = p.name;

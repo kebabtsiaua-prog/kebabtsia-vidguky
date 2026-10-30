@@ -9,6 +9,7 @@ import {
   savePhoto, tabUrl, tg, tgFile, type User, webhookSecret,
 } from "../_shared/common.ts";
 import { recipients } from "../_shared/uployal.ts";
+import { alertTake, importGlovo, isGlovoReport, remindGlovo, take, takeButtonFor } from "../_shared/glovo.ts";
 import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, ownerId, setOf, type SurveyUser } from "../_shared/survey.ts";
 
 type Draft = {
@@ -174,6 +175,37 @@ async function onMessage(msg: any) {
     }
   }
 
+  // The Glovo «Відгуки щодня» report forwarded as a .csv file (owner 2026-10-30).
+  if (msg.document && /\.csv$/i.test(msg.document.file_name ?? "")) {
+    if (u.role !== "admin") {
+      await tg("sendMessage", { chat_id: chat, text: "Звіти Glovo завантажує власник. Скарги надсилайте скриншотом або текстом." });
+      return;
+    }
+    await tg("sendChatAction", { chat_id: chat, action: "typing" });
+    const f = await tgFile(msg.document.file_id);
+    const csv = new TextDecoder("utf-8").decode(f.bytes);
+    if (!isGlovoReport(csv)) {
+      await tg("sendMessage", { chat_id: chat, text: "Це не схоже на звіт Glovo «Відгуки щодня». Надішліть файл, завантажений зі звітів Glovo." });
+      return;
+    }
+    const r = await importGlovo(csv);
+    const dm = (d: string) => d.split("-").reverse().slice(0, 2).join(".");
+    const lines = [`📥 <b>Звіт Glovo${r.days.length ? ` за ${r.days.map(dm).join(", ")}` : ""}</b>`, ""];
+    if (!r.rows) lines.push("У звіті немає відгуків.");
+    else if (!r.fresh) lines.push(`Усі ${r.rows} відгуків уже були додані раніше.`);
+    else {
+      lines.push(`Нових відгуків: <b>${r.fresh}</b>, з них з текстом: <b>${r.withText}</b>, негативних: <b>${r.negative}</b>.`);
+      if (r.complaints.length) {
+        lines.push("", `Нові скарги (${r.complaints.length}):`);
+        for (const c of r.complaints) lines.push(`· №${c.id} ${esc(c.loc)}`);
+        lines.push("", "Адміни точок, ви, Роман і Юра отримали сповіщення.");
+      } else lines.push("", "Нових скарг немає.");
+    }
+    if (r.unknown.length) lines.push("", `⚠️ Не знайшов точку для: ${r.unknown.map(esc).join("; ")}. Їхні скарги не додано, напишіть розробнику.`);
+    await tg("sendMessage", { chat_id: chat, parse_mode: "HTML", text: lines.join("\n"), reply_markup: { inline_keyboard: [[{ text: "Відкрити чергу", web_app: { url: tabUrl("queue") } }]] } });
+    return;
+  }
+
   const photoId: string | null = msg.photo?.length ? msg.photo[msg.photo.length - 1].file_id
     : msg.document?.mime_type?.startsWith("image/") ? msg.document.file_id : null;
   if (!photoId && !text) {
@@ -218,6 +250,11 @@ async function onCallback(cb: any) {
     const { data: x } = await db.from("users").update({ active: false }).eq("tg_id", id).select("name").maybeSingle();
     await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Доступ прибрано" });
     await tg("editMessageText", { chat_id: chat, message_id: msgId, text: `🚫 Доступ прибрано: ${x?.name ?? ""}. Ця людина більше не бачить апку.` });
+    return;
+  }
+  if (kind === "tk") {
+    const note = await take(id, u);
+    await tg("answerCallbackQuery", { callback_query_id: cb.id, text: note });
     return;
   }
   const d = await loadDraft(id, u);
@@ -290,8 +327,14 @@ async function onCallback(cb: any) {
       message_id: msgId,
       parse_mode: "HTML",
       text: `✓ <b>Збережено · №${row.id}</b>\n${esc(locs.find((l) => l.id === d.loc)?.name ?? "")} · ${esc(d.ch)}\n<blockquote>${esc(d.text)}</blockquote>Скарга в апці у «Чекають рішення».`,
-      reply_markup: { inline_keyboard: [[{ text: "Відкрити скаргу", web_app: { url: itemUrl(row.id) } }]] },
+      reply_markup: d.ch === "Glovo" || d.ch === "Bolt" ? await takeButtonFor(row.id)
+        : { inline_keyboard: [[{ text: "Відкрити скаргу", web_app: { url: itemUrl(row.id) } }]] },
     });
+    // Glovo and Bolt: the location's admins, the owner, Роман and Юра hear about it at once (owner 2026-10-27).
+    if (d.ch === "Glovo" || d.ch === "Bolt") {
+      await db.from("complaint_alerts").upsert({ complaint_id: row.id, chat_id: chat, message_id: msgId, boss: false });
+      await alertTake(row.id, u.tg_id);
+    }
   }
   await tg("answerCallbackQuery", { callback_query_id: cb.id });
 }
@@ -498,6 +541,7 @@ Deno.serve(async (req) => {
       if (new URL(req.url).searchParams.has("chats")) return Response.json(await listChats());
       if (new URL(req.url).searchParams.has("digest")) return Response.json(await digest());
       if (new URL(req.url).searchParams.has("sheet")) return Response.json(await syncSheet());
+      if (new URL(req.url).searchParams.has("glovo")) return Response.json(await remindGlovo(kyivToday()));
       if (new URL(req.url).searchParams.has("report")) return Response.json({ ok: true, reported: await morningReport(kyivToday()) });
       const key = new URL(req.url).searchParams.get("announce");
       if (key) return Response.json(await announce(key));
