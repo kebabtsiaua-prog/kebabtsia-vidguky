@@ -37,12 +37,11 @@ create index if not exists glovo_reviews_day_idx on glovo_reviews (rated_on);
 alter table complaints add column if not exists taken_by bigint references users(tg_id);
 alter table complaints add column if not exists taken_at timestamptz;
 
--- The alert messages sent about a complaint, so they can be updated once someone takes it.
+-- The alert messages sent to the location's admins, so they can be updated once someone takes it.
 create table if not exists complaint_alerts (
   complaint_id bigint not null references complaints(id) on delete cascade,
   chat_id      bigint not null,
   message_id   int not null,
-  boss         boolean not null default false,  -- owner, Роман, Юра: they see whether the admin took it
   primary key (complaint_id, chat_id)
 );
 

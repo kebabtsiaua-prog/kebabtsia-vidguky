@@ -9,7 +9,7 @@ import {
   savePhoto, tabUrl, tg, tgFile, type User, webhookSecret,
 } from "../_shared/common.ts";
 import { recipients } from "../_shared/uployal.ts";
-import { alertTake, importGlovo, isGlovoReport, remindGlovo, take, takeButtonFor } from "../_shared/glovo.ts";
+import { alertTake, dailyReport, importGlovo, isGlovoReport, remindGlovo, take, takeButtonFor } from "../_shared/glovo.ts";
 import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, ownerId, setOf, type SurveyUser } from "../_shared/survey.ts";
 
 type Draft = {
@@ -198,7 +198,7 @@ async function onMessage(msg: any) {
       if (r.complaints.length) {
         lines.push("", `Нові скарги (${r.complaints.length}):`);
         for (const c of r.complaints) lines.push(`· №${c.id} ${esc(c.loc)}`);
-        lines.push("", "Адміни точок, ви, Роман і Юра отримали сповіщення.");
+        lines.push("", "Адміни точок отримали сповіщення. Вам, Роману та Юрі завтра зранку прийде звіт за день.");
       } else lines.push("", "Нових скарг немає.");
     }
     if (r.unknown.length) lines.push("", `⚠️ Не знайшов точку для: ${r.unknown.map(esc).join("; ")}. Їхні скарги не додано, напишіть розробнику.`);
@@ -330,9 +330,9 @@ async function onCallback(cb: any) {
       reply_markup: d.ch === "Glovo" || d.ch === "Bolt" ? await takeButtonFor(row.id)
         : { inline_keyboard: [[{ text: "Відкрити скаргу", web_app: { url: itemUrl(row.id) } }]] },
     });
-    // Glovo and Bolt: the location's admins, the owner, Роман and Юра hear about it at once (owner 2026-10-27).
+    // Glovo and Bolt: the location's other admins hear about it at once (owner 2026-10-27, 2026-10-30).
     if (d.ch === "Glovo" || d.ch === "Bolt") {
-      await db.from("complaint_alerts").upsert({ complaint_id: row.id, chat_id: chat, message_id: msgId, boss: false });
+      await db.from("complaint_alerts").upsert({ complaint_id: row.id, chat_id: chat, message_id: msgId });
       await alertTake(row.id, u.tg_id);
     }
   }
@@ -429,9 +429,10 @@ async function digest(): Promise<Record<string, unknown>> {
   const today = kyivToday();
   const reminded = await surveyReminders(today);
   const reported = await morningReport(today).catch((e) => (console.error(e), 0));
+  const glovo = await dailyReport(today).catch((e) => (console.error(e), 0));
   await syncSheet().catch(console.error);
   const { error: dup } = await db.from("bot_digests").insert({ day: today });
-  if (dup) return { ok: true, sent: 0, reminded, reported, reason: "already sent today" };
+  if (dup) return { ok: true, sent: 0, reminded, reported, glovo, reason: "already sent today" };
   const locs = await activeLocations();
   const name = (id: number) => (locs.find((l) => l.id === id)?.name ?? "").replace(/^Львів, /, "");
   const { data: open } = await db.from("complaints").select("id,location_id,channel,happened_on,created_at,source").eq("result", "");
@@ -449,7 +450,7 @@ async function digest(): Promise<Record<string, unknown>> {
     const s = (snaps ?? []).filter((x) => x.location_id === l.id && x.rating != null);
     if (s.length >= 2 && Number(s[0].rating) < Number(s[1].rating)) drops.push(`${esc(name(l.id))} ${String(s[1].rating).replace(".", ",")} → ${String(s[0].rating).replace(".", ",")}`);
   }
-  if (!old.length && !drops.length) return { ok: true, sent: 0, reminded, reported, reason: "nothing to report" };
+  if (!old.length && !drops.length) return { ok: true, sent: 0, reminded, reported, glovo, reason: "nothing to report" };
   const lines = ["☀️ <b>Ранкова зведенка</b>", ""];
   if (all.length) lines.push(`Чекають рішення: <b>${all.length}</b>${old.length ? `, з них довше доби: <b>${old.length}</b>` : ""}`);
   for (const c of old.slice(0, 8)) lines.push(`· ${esc(name(c.location_id))}, ${esc(c.channel)} · ${c.days} дн`);
@@ -463,7 +464,7 @@ async function digest(): Promise<Record<string, unknown>> {
     }).catch(console.error);
     if (r?.ok) sent++;
   }
-  return { ok: true, sent, reminded, reported, waiting: all.length, older: old.length, drops: drops.length };
+  return { ok: true, sent, reminded, reported, glovo, waiting: all.length, older: old.length, drops: drops.length };
 }
 
 // GET ?announce=KEY, called by the deploy workflow: a one-off message to one person, found by first name.
