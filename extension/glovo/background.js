@@ -8,6 +8,7 @@ const looksLikeReport = (t) => /замовлен|order/i.test(t.slice(0, 2000)) 
 const today = () => new Date().toLocaleDateString("sv");
 let lastClick = null;
 let autoTab = null;
+let autoStarted = 0;
 const pending = new Set();
 
 async function setStatus(text, ok) {
@@ -78,29 +79,26 @@ chrome.downloads.onCreated.addListener(async (item) => {
 
 // Every evening: open the reports page in a background tab and press «Завантажити».
 async function runAuto() {
-  if (autoTab !== null) return;
+  if (autoTab !== null && Date.now() - autoStarted < 180000) return;
+  autoStarted = Date.now();
   const tab = await chrome.tabs.create({ url: REPORTS, active: false });
   autoTab = tab.id;
   await chrome.storage.local.set({ autoTried: today() });
-  const done = async (tabId, info) => {
-    if (tabId !== tab.id || info.status !== "complete") return;
-    chrome.tabs.onUpdated.removeListener(done);
-    let res;
-    for (let i = 0; i < 10; i++) { // the first «complete» can come before the portal page itself
-      res = await chrome.tabs.sendMessage(tab.id, { type: "auto" }).catch((e) => ({ found: false, error: String(e.message ?? e) }));
-      if (!res.error) break;
-      if (i === 4) await chrome.tabs.reload(tab.id).catch(() => {}); // the page did not open (no internet after sleep)
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-    await post({ diag: { via: "auto", ...res } });
-    if (!res?.found) {
-      await setStatus(/login|auth|sign/i.test(res?.page ?? "") ? "Увійдіть у портал Glovo в цьому Chrome, тоді натисніть «Забрати звіт зараз»."
-        : "Не знайшов кнопку «Завантажити». Відкрийте звіт із листа й натисніть її самі, розширення надішле файл.", false);
-      chrome.tabs.update(tab.id, { active: true }).catch(() => {});
-      autoTab = null;
-    } else setTimeout(() => { if (autoTab === tab.id) { chrome.tabs.remove(tab.id).catch(() => {}); autoTab = null; } }, 120000);
-  };
-  chrome.tabs.onUpdated.addListener(done);
+  // Ask the page until it answers: waiting for «complete» missed a page that came from cache before the listener was set.
+  let res;
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    res = await chrome.tabs.sendMessage(tab.id, { type: "auto" }).catch((e) => ({ found: false, error: String(e.message ?? e) }));
+    if (!res.error) break;
+    if (i === 9) await chrome.tabs.reload(tab.id).catch(() => {}); // the page did not open (no internet after sleep)
+  }
+  await post({ diag: { via: "auto", ...res } });
+  if (!res.found) {
+    await setStatus(/login|auth|sign/i.test(res.page ?? "") ? "Увійдіть у портал Glovo в цьому Chrome, тоді натисніть «Забрати звіт зараз»."
+      : "Не знайшов кнопку «Завантажити». Відкрийте звіт із листа й натисніть її самі, розширення надішле файл.", false);
+    chrome.tabs.update(tab.id, { active: true }).catch(() => {});
+    autoTab = null;
+  } else setTimeout(() => { if (autoTab === tab.id) { chrome.tabs.remove(tab.id).catch(() => {}); autoTab = null; } }, 120000);
 }
 
 function nextAuto() {
