@@ -669,6 +669,7 @@ function addedBy(r){
   if(r.source==="google")return {name:"Google",auto:true,how:"автоматично"};
   if(r.source==="uployal")return {name:"Оцінка в додатку",auto:true,how:"автоматично"};
   if(r.source==="glovo")return {name:"Звіт Glovo",auto:true,how:"автоматично"};
+  if(r.source==="bolt")return {name:"Сторінка Bolt",auto:true,how:"автоматично"};
   if(r.source==="sheet")return {name:"Таблиця звітності",auto:true,how:"перенесено з"};
   return {name:r.source==="bot"?"Бот":"—",auto:true,how:""};
 }

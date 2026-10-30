@@ -20,8 +20,9 @@
 </style>
 </head>
 <body>
-  <h1>🧩 Звіт Glovo → бот «Відгуки»</h1>
+  <h1>🧩 Glovo і Bolt → бот «Відгуки»</h1>
   <div id="status"></div>
+  <div id="bolt" class="hint"></div>
   <div id="keybox">
     <label for="key">Ключ із бота (надішліть боту /glovo_key)</label>
     <input id="key" placeholder="123456789.abcd…" autocomplete="off">
@@ -29,7 +30,7 @@
   </div>
   <button id="run">Забрати звіт зараз</button>
   <button id="open" class="ghost">Відкрити звіти Glovo</button>
-  <div class="hint">Щовечора о 18:50 розширення саме відкриває звіти Glovo і надсилає файл боту. Chrome має бути відкритий, а ви увійшли в портал Glovo.</div>
+  <div class="hint">Щовечора о 18:50 розширення саме відкриває звіти Glovo і відгуки Bolt і надсилає їх боту. Chrome має бути відкритий, а ви увійшли в портал Glovo.</div>
   <script src="popup.js"></script>
 </body>
 </html>

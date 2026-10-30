@@ -133,6 +133,7 @@ async function alertText(c: Comp, viewer: number, taker: string | null): Promise
   const { data: loc } = await db.from("locations").select("name").eq("id", c.location_id).single();
   let from = "";
   if (c.source === "glovo") from = "🤖 бот знайшов у звіті Glovo";
+  else if (c.source === "bolt") from = "🤖 бот знайшов у Bolt Merchant";
   else if (c.created_by) {
     const { data: a } = await db.from("users").select("name").eq("tg_id", c.created_by).maybeSingle();
     from = `додав(ла) ${esc(a?.name ?? "")}`;
