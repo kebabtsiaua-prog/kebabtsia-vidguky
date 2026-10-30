@@ -11,6 +11,7 @@ Telegram-апка для скарг гостей мережі «Кебабця»
 | Бот `@kebabtsia_vidguky_bot` (скриншоти → скарги) | `supabase/functions/bot` | GitHub Actions → Supabase |
 | База даних | `supabase/migrations` | GitHub Actions → Supabase |
 | Не дати Supabase «заснути» | `.github/workflows/keepalive.yml` | щодня сам |
+| Відгуки Glovo: нагадування власнику переслати звіт «Відгуки щодня» (.csv) ботові | `.github/workflows/glovo.yml`, `supabase/functions/_shared/glovo.ts` | щовечора о 19:00 |
 
 Усе працює в хмарі. Комп'ютер для роботи апки не потрібен.
 

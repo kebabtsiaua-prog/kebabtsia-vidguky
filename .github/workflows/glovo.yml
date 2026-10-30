@@ -1,0 +1,19 @@
+# Evening reminder to the owner: Glovo's «Відгуки щодня» report is ready, forward the .csv to the bot.
+# Glovo emails it around 18:30 Kyiv; 17:00 UTC = 19:00 in Kyiv in winter (20:00 in summer).
+# The bot skips it when yesterday's report was already forwarded.
+name: Нагадування про звіт Glovo
+
+on:
+  schedule:
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          ref="obpmsgxanigythxkvrmh"
+          out=$(curl -sS "https://$ref.supabase.co/functions/v1/bot?glovo=1")
+          echo "$out"
+          echo "::notice title=Glovo::$out"

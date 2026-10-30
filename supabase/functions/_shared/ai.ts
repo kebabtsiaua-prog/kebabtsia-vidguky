@@ -124,6 +124,58 @@ export async function parseComplaint(
   }
 }
 
+// Glovo report rows carry no usable stars, so the text decides: only negative reviews become complaints (owner 2026-10-30).
+// One request for the whole file. Without AI every review with text counts as negative, so none is lost.
+export async function negativeReviews(texts: string[]): Promise<{ negative: boolean; topics: string[] }[]> {
+  const fallback = texts.map((t) => ({ negative: true, topics: keywordTopics(t) }));
+  const apiKey = Deno.env.get("ANTHROPIC_API_KEY")?.trim();
+  if (!apiKey || !texts.length) return fallback;
+  const schema = {
+    type: "object",
+    properties: {
+      reviews: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            n: { type: "integer" },
+            negative: { type: "boolean", description: "true if the guest complains about anything, even politely or alongside praise" },
+            topics: { type: "array", items: { type: "string", enum: TOPICS } },
+          },
+          required: ["n", "negative", "topics"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["reviews"],
+    additionalProperties: false,
+  };
+  try {
+    const client = new Anthropic({ apiKey });
+    // deno-lint-ignore no-explicit-any
+    const params: any = {
+      model: "claude-opus-5-5",
+      max_tokens: 8000,
+      system: "Ти читаєш відгуки гостей мережі кебабних «Кебабця» з Glovo. Для кожного відгуку визнач, чи гість на щось скаржиться (negative), і теми скарги зі списку.",
+      messages: [{ role: "user", content: texts.map((t, i) => `${i + 1}. ${t}`).join("\n") }],
+      output_config: { effort: "low", format: { type: "json_schema", schema } },
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+    };
+    const res = await client.beta.messages.create(params);
+    const block = res.content.find((b) => b.type === "text");
+    if (res.stop_reason === "refusal" || !block || block.type !== "text") return fallback;
+    const out: { n: number; negative: boolean; topics: string[] }[] = JSON.parse(block.text).reviews ?? [];
+    return texts.map((t, i) => {
+      const x = out.find((r) => r.n === i + 1);
+      return x ? { negative: x.negative, topics: x.topics.filter((k) => TOPICS.includes(k)) } : fallback[i];
+    });
+  } catch (e) {
+    console.error("glovo ai", e);
+    return fallback;
+  }
+}
+
 export function b64(bytes: Uint8Array): string {
   let s = "";
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
