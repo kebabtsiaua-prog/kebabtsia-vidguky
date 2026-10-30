@@ -53,7 +53,7 @@ function guessLocation(name: string, locs: Location[]): Location | undefined {
 }
 
 export type ImportResult = {
-  days: string[]; rows: number; fresh: number; withText: number; negative: number; complaints: { id: number; loc: string }[];
+  days: string[]; rows: number; fresh: number; withText: number; negative: number; existing: number; complaints: { id: number; loc: string }[];
   unknown: string[];
 };
 
@@ -68,7 +68,7 @@ export async function importGlovo(text: string): Promise<ImportResult> {
     const l = locs.find((x) => x.id === m.id);
     if (l) byStore.set(s, l);
   }
-  const res: ImportResult = { days: [], rows: rows.length, fresh: 0, withText: 0, negative: 0, complaints: [], unknown: [] };
+  const res: ImportResult = { days: [], rows: rows.length, fresh: 0, withText: 0, negative: 0, existing: 0, complaints: [], unknown: [] };
   const texts: { order: string; day: string; body: string; loc?: Location }[] = [];
   for (const r of rows) {
     const order = (r[ix.order] ?? "").trim(), storeId = Number(r[ix.storeId]);
@@ -107,7 +107,15 @@ export async function importGlovo(text: string): Promise<ImportResult> {
       location_id: x.loc.id, channel: "Glovo", happened_on: x.day, text: x.body, topics: verdicts[i].topics,
       source: "glovo", external_id: `glovo:${x.order}`,
     }).select("id").single();
-    if (!c) continue;
+    if (!c) {
+      // Already in the app (added by hand earlier): link it instead of making a second one.
+      const { data: had } = await db.from("complaints").select("id").eq("external_id", `glovo:${x.order}`).maybeSingle();
+      if (had) {
+        res.existing++;
+        await db.from("glovo_reviews").update({ complaint_id: had.id }).eq("order_id", x.order);
+      }
+      continue;
+    }
     await db.from("glovo_reviews").update({ complaint_id: c.id }).eq("order_id", x.order);
     res.complaints.push({ id: c.id, loc: x.loc.name });
     await alertTake(c.id);
