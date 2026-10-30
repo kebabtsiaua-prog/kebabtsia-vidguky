@@ -114,6 +114,8 @@ async function catchUp() {
   if (late && lastDay !== today() && autoTried !== today()) runAuto();
 }
 
+chrome.tabs.onRemoved.addListener((id) => { if (id === autoTab) autoTab = null; }); // closed by hand: the next press starts again
+
 chrome.runtime.onInstalled.addListener(() => chrome.alarms.create("auto", { when: nextAuto(), periodInMinutes: 24 * 60 }));
 chrome.runtime.onStartup.addListener(catchUp); // the Mac was asleep or Chrome closed at 18:50
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === "auto") catchUp(); });
