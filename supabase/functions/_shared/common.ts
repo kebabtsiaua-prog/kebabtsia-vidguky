@@ -103,6 +103,11 @@ export async function webhookSecret(): Promise<string> {
   return hex(await hmac(new TextEncoder().encode("kebabtsia-webhook"), botToken())).slice(0, 48);
 }
 
+// The Chrome extension's key for sending Glovo reports, «<tg_id>.<hash>», derived the same way, so nothing is stored.
+export async function glovoKey(tgId: number): Promise<string> {
+  return `${tgId}.${hex(await hmac(new TextEncoder().encode(`kebabtsia-glovo:${tgId}`), botToken())).slice(0, 32)}`;
+}
+
 // Checks Telegram Mini App initData (https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app).
 export async function telegramUser(initData: string): Promise<{ id: number; first_name: string; last_name?: string; username?: string } | null> {
   if (!initData) return null;

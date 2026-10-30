@@ -5,11 +5,11 @@ import { syncSheet } from "../_shared/sheet.ts";
 import { b64, parseComplaint } from "../_shared/ai.ts";
 import { listChats, onGroupMessage, onMembership } from "../_shared/uployal.ts";
 import {
-  activeLocations, APP_URL, bootstrapAdmin, channelsFor, db, getUser, itemUrl, kyivToday, type Location, ownLocations, redeemCode, ROLES,
+  activeLocations, APP_URL, bootstrapAdmin, channelsFor, db, getUser, glovoKey, itemUrl, kyivToday, type Location, ownLocations, redeemCode, ROLES,
   savePhoto, tabUrl, tg, tgFile, type User, webhookSecret,
 } from "../_shared/common.ts";
 import { recipients } from "../_shared/uployal.ts";
-import { alertTake, dailyReport, importGlovo, isGlovoReport, remindGlovo, take, takeButtonFor } from "../_shared/glovo.ts";
+import { alertTake, dailyReport, type ImportResult, importGlovo, isGlovoReport, remindGlovo, take, takeButtonFor } from "../_shared/glovo.ts";
 import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, ownerId, setOf, type SurveyUser } from "../_shared/survey.ts";
 
 type Draft = {
@@ -81,6 +81,26 @@ async function loadDraft(id: number, u: User): Promise<Draft | null> {
 }
 async function storeDraft(id: number, d: Draft) {
   await db.from("bot_drafts").update({ data: d }).eq("id", id);
+}
+
+// What the bot answers after a Glovo report is imported, from a forwarded file or from the Chrome extension.
+function glovoSummary(r: ImportResult, via = "") {
+  const dm = (d: string) => d.split("-").reverse().slice(0, 2).join(".");
+  const lines = [`📥 <b>Звіт Glovo${r.days.length ? ` за ${r.days.map(dm).join(", ")}` : ""}</b>`, ""];
+  if (via) lines.splice(1, 0, via);
+  if (!r.rows) lines.push("У звіті немає відгуків.");
+  else if (!r.fresh) lines.push(`Усі ${r.rows} відгуків уже були додані раніше.`);
+  else {
+    lines.push(`Нових відгуків: <b>${r.fresh}</b>, з них з текстом: <b>${r.withText}</b>, негативних: <b>${r.negative}</b>.`);
+    if (r.complaints.length) {
+      lines.push("", `Нові скарги (${r.complaints.length}):`);
+      for (const c of r.complaints) lines.push(`· №${c.id} ${esc(c.loc)}`);
+      lines.push("", "Адміни точок отримали сповіщення. Вам, Роману та Юрі завтра зранку прийде звіт за день.");
+    } else lines.push("", "Нових скарг немає.");
+    if (r.existing) lines.push(`Уже були в апці раніше: ${r.existing}.`);
+  }
+  if (r.unknown.length) lines.push("", `⚠️ Не знайшов точку для: ${r.unknown.map(esc).join("; ")}. Їхні скарги не додано, напишіть розробнику.`);
+  return { text: lines.join("\n"), reply_markup: { inline_keyboard: [[{ text: "Відкрити чергу", web_app: { url: tabUrl("queue") } }]] } };
 }
 
 // deno-lint-ignore no-explicit-any
@@ -175,6 +195,15 @@ async function onMessage(msg: any) {
     }
   }
 
+  // The key for the Chrome extension that sends the Glovo report by itself (owner 2026-10-30). Only the owner gets one.
+  if (text === "/glovo_key") {
+    await tg("sendMessage", u.role === "admin"
+      ? { chat_id: chat, parse_mode: "HTML", text: "🧩 Ключ для розширення «Кебабця: звіт Glovo»:\n\n" +
+        `<code>${await glovoKey(u.tg_id)}</code>\n\nНатисніть на ключ, щоб скопіювати, і вставте його в розширення. Нікому його не пересилайте.` }
+      : { chat_id: chat, text: "Ключ для розширення Glovo видається лише власнику." });
+    return;
+  }
+
   // The Glovo «Відгуки щодня» report forwarded as a .csv file (owner 2026-10-30).
   if (msg.document && /\.csv$/i.test(msg.document.file_name ?? "")) {
     if (u.role !== "admin") {
@@ -188,22 +217,7 @@ async function onMessage(msg: any) {
       await tg("sendMessage", { chat_id: chat, text: "Це не схоже на звіт Glovo «Відгуки щодня». Надішліть файл, завантажений зі звітів Glovo." });
       return;
     }
-    const r = await importGlovo(csv);
-    const dm = (d: string) => d.split("-").reverse().slice(0, 2).join(".");
-    const lines = [`📥 <b>Звіт Glovo${r.days.length ? ` за ${r.days.map(dm).join(", ")}` : ""}</b>`, ""];
-    if (!r.rows) lines.push("У звіті немає відгуків.");
-    else if (!r.fresh) lines.push(`Усі ${r.rows} відгуків уже були додані раніше.`);
-    else {
-      lines.push(`Нових відгуків: <b>${r.fresh}</b>, з них з текстом: <b>${r.withText}</b>, негативних: <b>${r.negative}</b>.`);
-      if (r.complaints.length) {
-        lines.push("", `Нові скарги (${r.complaints.length}):`);
-        for (const c of r.complaints) lines.push(`· №${c.id} ${esc(c.loc)}`);
-        lines.push("", "Адміни точок отримали сповіщення. Вам, Роману та Юрі завтра зранку прийде звіт за день.");
-      } else lines.push("", "Нових скарг немає.");
-      if (r.existing) lines.push(`Уже були в апці раніше: ${r.existing}.`);
-    }
-    if (r.unknown.length) lines.push("", `⚠️ Не знайшов точку для: ${r.unknown.map(esc).join("; ")}. Їхні скарги не додано, напишіть розробнику.`);
-    await tg("sendMessage", { chat_id: chat, parse_mode: "HTML", text: lines.join("\n"), reply_markup: { inline_keyboard: [[{ text: "Відкрити чергу", web_app: { url: tabUrl("queue") } }]] } });
+    await tg("sendMessage", { chat_id: chat, parse_mode: "HTML", ...glovoSummary(await importGlovo(csv)) });
     return;
   }
 
@@ -537,8 +551,25 @@ async function setup(req: Request): Promise<Response> {
   return Response.json({ ok: hook.ok, webhook: hook.description, host: url.host });
 }
 
+// The Chrome extension on the owner's computer sends the report it downloaded from the Glovo portal.
+// Without a file it sends only what it saw on the page, so the auto-download can be fixed from the logs.
+async function glovoUpload(req: Request): Promise<Response> {
+  const key = req.headers.get("x-glovo-key")?.trim() ?? "";
+  const tgId = Number(key.split(".")[0]);
+  const u = tgId ? await getUser(tgId) : null;
+  if (!u?.active || u.role !== "admin" || key !== await glovoKey(tgId)) return Response.json({ ok: false, error: "key" }, { status: 403 });
+  const { csv, diag } = await req.json().catch(() => ({}));
+  console.log("glovo extension", JSON.stringify(diag ?? null).slice(0, 4000));
+  if (csv === undefined) return Response.json({ ok: true, logged: true });
+  if (typeof csv !== "string" || !isGlovoReport(csv)) return Response.json({ ok: false, error: "not a report" }, { status: 400 });
+  const r = await importGlovo(csv);
+  await tg("sendMessage", { chat_id: u.tg_id, parse_mode: "HTML", ...glovoSummary(r, "🧩 Розширення Chrome забрало звіт саме.") });
+  return Response.json({ ok: true, days: r.days, rows: r.rows, fresh: r.fresh, complaints: r.complaints.length });
+}
+
 Deno.serve(async (req) => {
   try {
+    if (req.method === "POST" && new URL(req.url).searchParams.has("glovo_csv")) return await glovoUpload(req);
     if (req.method === "GET") {
       if (new URL(req.url).searchParams.has("chats")) return Response.json(await listChats());
       if (new URL(req.url).searchParams.has("digest")) return Response.json(await digest());

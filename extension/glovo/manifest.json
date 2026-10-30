@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Кебабця: звіт Glovo",
+  "version": "1.0",
+  "description": "Щовечора забирає звіт Glovo «Відгуки щодня» і надсилає його боту «Відгуки Кебабця».",
+  "permissions": ["alarms", "downloads", "storage"],
+  "host_permissions": ["https://*/*"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["https://portal.glovoapp.com/*"], "js": ["page.js"], "run_at": "document_start", "world": "MAIN" },
+    { "matches": ["https://portal.glovoapp.com/*"], "js": ["relay.js"], "run_at": "document_start" }
+  ],
+  "action": { "default_popup": "popup.html", "default_title": "Звіт Glovo", "default_icon": "icon.png" },
+  "icons": { "128": "icon.png" }
+}
