@@ -59,6 +59,7 @@ chrome.runtime.onMessage.addListener((m, sender) => {
   if (m.type === "click") lastClick = { page: m.page, clicked: m.clicked, at: Date.now() };
   if (m.type === "csv") send(m.csv, m.diag);
   if (m.type === "run") runAuto();
+  if (m.type === "diag") post({ diag: m.diag });
 });
 
 // A download from the portal: fetch the same link (the browser is logged in) and send its text.

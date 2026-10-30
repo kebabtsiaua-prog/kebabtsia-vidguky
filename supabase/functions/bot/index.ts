@@ -559,7 +559,7 @@ async function glovoUpload(req: Request): Promise<Response> {
   const u = tgId ? await getUser(tgId) : null;
   if (!u?.active || u.role !== "admin" || key !== await glovoKey(tgId)) return Response.json({ ok: false, error: "key" }, { status: 403 });
   const { csv, diag } = await req.json().catch(() => ({}));
-  console.log("glovo extension", JSON.stringify(diag ?? null).slice(0, 4000));
+  console.log("glovo extension", JSON.stringify(diag ?? null).slice(0, 16000));
   if (csv === undefined) return Response.json({ ok: true, logged: true });
   if (typeof csv !== "string" || !isGlovoReport(csv)) return Response.json({ ok: false, error: "not a report" }, { status: 400 });
   const r = await importGlovo(csv);
