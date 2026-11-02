@@ -114,6 +114,7 @@ button.kpi:hover{background:var(--card2)}
 .pill::before{content:"";width:6px;height:6px;border-radius:3px;background:currentColor}
 .pill.open{background:var(--warn-soft);color:var(--warn)}
 .pill.done{background:var(--good-soft);color:var(--good)}
+.pill.new{background:var(--acc-soft);color:var(--acc-fg)}
 .pill.late{background:var(--bad-soft);color:var(--bad)}
 
 /* grid rows */
@@ -148,6 +149,7 @@ button.kpi:hover{background:var(--card2)}
 .q .t1 b{font-weight:600;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .q .t1 span{margin-left:auto;font-size:12px;color:var(--hint);white-space:nowrap}
 .q .t1 span.late{color:var(--bad);font-weight:700}
+.q .t1 span.wait{color:var(--warn);font-weight:700}
 .q .t1 span.ok{color:var(--good);font-weight:600}
 .q .tx{font-size:13px;color:var(--fg2);display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;margin-top:1px}
 
@@ -216,6 +218,7 @@ td .big{font-weight:700;font-size:15px}
 td .what{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:13px;color:var(--fg2)}
 .tags{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap}
 .tag{font-size:11.5px;font-weight:600;color:var(--fg2);background:var(--card2);border-radius:6px;padding:1px 6px}
+.tag.mt{background:var(--warn-soft);color:var(--warn);white-space:nowrap}
 .byw{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;white-space:nowrap}
 .byw .ava{width:24px;height:24px;font-size:10px}
 .byw.auto .ava{background:var(--card2);color:var(--hint)}
@@ -599,7 +602,7 @@ var ME=null;            // {user, roles, channels, allChannels, topics, results,
 var D=null;             // month data from the server
 var LOCS=[],LOCBY={},LOCNAME={},THEMES=[],RESULTS=[],WHO=[],PEOPLE={};
 var MK=[],MNOM=[],MLOC=[],MSHORT=[],MGEN=[];  // window of 6 months, index 5 = selected month
-var items=[],G={},CHK={},collabs=null;
+var items=[],G={},CHK={},CHKM={},collabs=null;
 var S={tab:"home",loc:null,from:"locs",mk:"",
   q:{st:"open",loc:null,ch:null,text:""},cab:{st:"all",ch:null},home:{seg:"all"},locs:{seg:"all",sort:"n",text:""},ctx:[]};
 var NOM=["січень","лютий","березень","квітень","травень","червень","липень","серпень","вересень","жовтень","листопад","грудень"];
@@ -623,14 +626,17 @@ function ingest(){
   LOCS=D.locations.map(function(l){return l.name});LOCBY={};LOCNAME={};
   D.locations.forEach(function(l){LOCBY[l.name]=l;LOCNAME[l.id]=l.name});
   WHO=D.who||[];PEOPLE=D.people||{};
-  items=D.items.filter(function(r){return LOCNAME[r.location_id]}).map(function(r){var mk=r.happened_on.slice(0,7);
-    return {id:r.id,m:MK.indexOf(mk),day:+r.happened_on.slice(8,10),loc:LOCNAME[r.location_id],ch:r.channel,text:r.text,themes:r.topics||[],result:r.result,solution:r.solution,who:r.who,
-      photo:r.photo_path,rating:r.rating,date:r.happened_on,source:r.source,by:r.created_by,created:r.created_at,resolved:r.resolved_at,takenBy:r.taken_by,taken:r.taken_at}});
+  // items: the selected and the previous month, plus (extra) older complaints still waiting and anything added or
+  // resolved in the last 8 days, so nothing unresolved disappears when a new month starts (owner 2026-11-02)
+  items=D.items.concat(D.extra||[]).filter(function(r){return LOCNAME[r.location_id]}).map(toItem);
   G={};D.google.forEach(function(g){var n=LOCNAME[g.location_id];if(!n)return;var i=MK.indexOf(String(g.month).slice(0,7));if(i<0)return;
     (G[n]=G[n]||[])[i]={total:g.total,nw:g.new_reviews,pos:g.positive,neg:g.negative,start:numOr(g.start_rating),end:numOr(g.end_rating)}});
-  CHK={};D.checks.forEach(function(c){var n=LOCNAME[c.location_id];if(!n)return;(CHK[n]=CHK[n]||{})[String(c.month).slice(0,7)]=c.checks});
+  CHK={};CHKM={};D.checks.forEach(function(c){var n=LOCNAME[c.location_id];if(!n)return;var mk=String(c.month).slice(0,7);(CHK[n]=CHK[n]||{})[mk]=c.checks;if(c.manual)CHKM[n+"|"+mk]=1});
   if(S.loc&&!LOCBY[S.loc])S.loc=null;
 }
+function toItem(r){var mk=r.happened_on.slice(0,7);
+  return {id:r.id,m:MK.indexOf(mk),mk:mk,day:+r.happened_on.slice(8,10),loc:LOCNAME[r.location_id],ch:r.channel,text:r.text,themes:r.topics||[],result:r.result,solution:r.solution,who:r.who,
+    photo:r.photo_path,rating:r.rating,date:r.happened_on,source:r.source,by:r.created_by,created:r.created_at,resolved:r.resolved_at,takenBy:r.taken_by,taken:r.taken_at}}
 function numOr(v){return v==null?null:+v}
 function gOf(l,i){return G[l]&&G[l][i]?G[l][i]:null}
 function gNow(g){return g?(g.end!=null?g.end:g.start):null}
@@ -642,6 +648,11 @@ function appOf(l,i){var id=LOCBY[l]&&LOCBY[l].id;return D.app&&D.app[id+"|"+MK[i
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function inM(m){return items.filter(function(r){return r.m===m})}
 function isOpen(r){return !r.result}
+// unresolved from a month before the selected one: still waits, counted in its own month's statistics
+function carried(r){return isOpen(r)&&r.mk<S.mk}
+// what waits for a decision now: this month's open ones and every older one nobody resolved yet
+function waiting(){return items.filter(function(r){return isOpen(r)&&(r.m===5||r.mk<S.mk)})}
+function mTag(r){return r.mk<S.mk?'<span class="tag mt">з '+GEN[mNum(r.mk)]+'</span>':""}
 function f1(v){return v==null?"—":(+v).toFixed(1).replace(".",",")}
 function cap(s){return s?s[0].toUpperCase()+s.slice(1):s}
 function count(list,fn){var o={};list.forEach(function(r){[].concat(fn(r)).forEach(function(k){o[k]=(o[k]||0)+1})});return o}
@@ -660,10 +671,18 @@ function kyivDay(iso){return iso?new Intl.DateTimeFormat("en-CA",{timeZone:"Euro
 function daysBetween(a,b){return Math.round((Date.parse(b)-Date.parse(a))/864e5)}
 // how long a complaint waits: from the day it reached us (or the review day, whichever is later) to today
 function age(r){var start=r.created&&r.source!=="sheet"?kyivDay(r.created):r.date;if(r.date>start)start=r.date;return Math.max(0,daysBetween(start,ME.today))}
+// one rule everywhere (owner 2026-11-02): yellow from 1 day, red from 3 days, counted from when it reached the app
 var LATE=3;
-function isLate(r){return isOpen(r)&&age(r)>LATE}
+function isLate(r){return isOpen(r)&&age(r)>=LATE}
 function ageTxt(n){return n===0?"сьогодні":n+" дн"}
-function statusPill(r){if(!isOpen(r))return '<span class="pill done">вирішено</span>';var a=age(r);return '<span class="pill '+(a>LATE?"late":"open")+'">'+(a?a+" дн":"нова")+'</span>'}
+function statusPill(r){if(!isOpen(r))return '<span class="pill done">вирішено</span>';var a=age(r);return '<span class="pill '+(a>=LATE?"late":a?"open":"new")+'">'+(a?a+" дн":"нова")+'</span>'}
+// who writes the solution: admins everything; a location admin Glovo, Bolt and app ratings of their locations
+// (checked by cameras); an operator the website and phone (owner 2026-11-02). The server checks the same.
+var INTERNAL=["Glovo","Bolt","Оцінки в додатку"],OPCH=["Сайт","Оператори"];
+function canSolve(r){if(isStaff())return true;if(isLocAdmin())return LOCS.indexOf(r.loc)>=0&&INTERNAL.indexOf(r.ch)>=0;if(ME.user.role==="operator")return OPCH.indexOf(r.ch)>=0;return false}
+function resultsFor(r){var cam=RESULTS.filter(function(x){return /камер|персоналом/.test(x)});var talk=RESULTS.filter(function(x){return cam.indexOf(x)<0});
+  return INTERNAL.indexOf(r.ch)>=0?cam.concat(isStaff()?["Владнано"]:[]):talk}
+function solverTxt(r){return INTERNAL.indexOf(r.ch)>=0?"адмін точки після перевірки по камерах":OPCH.indexOf(r.ch)>=0?"оператор":"Аня або Олена"}
 function addedBy(r){
   if(r.by&&PEOPLE[r.by])return {name:PEOPLE[r.by],auto:false,how:r.source==="bot"?"через бота":"в апці"};
   if(r.source==="google")return {name:"Google",auto:true,how:"автоматично"};
@@ -702,9 +721,9 @@ function gLine(vals){ // Google rating at the end of each of the 6 months
 
 // ================= per-location numbers =================
 function locRows(){
-  var cur=inM(5),prev=inM(4);
-  return LOCS.map(function(l){var mine=cur.filter(function(r){return r.loc===l}),g=gOf(l,5);
-    return {l:l,n:mine.length,p:prev.filter(function(r){return r.loc===l}).length,o:mine.filter(isOpen).length,late:mine.filter(isLate).length,
+  var cur=inM(5),prev=inM(4),wt=waiting();
+  return LOCS.map(function(l){var mine=cur.filter(function(r){return r.loc===l}),w=wt.filter(function(r){return r.loc===l}),g=gOf(l,5);
+    return {l:l,n:mine.length,p:prev.filter(function(r){return r.loc===l}).length,o:w.length,late:w.filter(isLate).length,
       c:chkOf(l),g:g,gs:g?g.start:null,ge:gNow(g),h:MK.map(function(_,i){return countFor(l,i)})}});
 }
 function gDrop(x){return x.gs!=null&&x.ge!=null?Math.round((x.ge-x.gs)*10)/10:0}
@@ -724,10 +743,10 @@ function locTable(rows,sel){
 
 // ================= complaint rows =================
 function qRow(r,noLoc){var a=age(r),open=isOpen(r);
-  return '<button class="q" data-item="'+r.id+'">'+cb(r.ch)+'<span class="b"><span class="t1"><b>'+(noLoc?dShort(r)+" · "+esc(r.ch):esc(shortLoc(r.loc)))+'</b><span class="'+(open?(a>LATE?"late":""):"ok")+'">'+(open?ageTxt(a):"✓ вирішено")+'</span></span><span class="tx">'+esc(r.text)+'</span></span></button>'}
+  return '<button class="q" data-item="'+r.id+'">'+cb(r.ch)+'<span class="b"><span class="t1"><b>'+(noLoc?dShort(r)+" · "+esc(r.ch):esc(shortLoc(r.loc)))+'</b><span class="'+(open?(a>=LATE?"late":a>=1?"wait":""):"ok")+'">'+(open?ageTxt(a):"✓ вирішено")+'</span></span><span class="tx">'+(r.mk<S.mk&&open?mTag(r)+' ':"")+esc(r.text)+'</span></span></button>'}
 function qTable(list,noLoc){
   return '<table><thead><tr>'+(noLoc?'<th>Дата</th>':'<th>Точка</th>')+'<th>Канал</th><th>Що сталося</th><th>Статус</th>'+(noLoc?"":'<th>Додав(ла)</th>')+'</tr></thead><tbody>'+list.map(function(r){
-    return '<tr class="go" data-item="'+r.id+'">'+(noLoc?'<td class="num" style="white-space:nowrap">'+dShort(r)+'</td>':'<td><div class="nm" style="white-space:nowrap">'+esc(shortLoc(r.loc))+'</div><div class="nk">'+dShort(r)+'</div></td>')+
+    return '<tr class="go" data-item="'+r.id+'">'+(noLoc?'<td class="num" style="white-space:nowrap">'+dShort(r)+(r.mk<S.mk?'<div>'+mTag(r)+'</div>':"")+'</td>':'<td><div class="nm" style="white-space:nowrap">'+esc(shortLoc(r.loc))+'</div><div class="nk">'+dShort(r)+'</div>'+(r.mk<S.mk?mTag(r):"")+'</td>')+
       '<td style="white-space:nowrap">'+cb(r.ch,1)+(r.rating?' '+stars(r.rating):"")+'</td><td><div class="what">'+esc(r.text)+'</div>'+(r.themes.length?'<div class="tags">'+r.themes.map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join("")+'</div>':"")+'</td>'+
       '<td>'+statusPill(r)+'</td>'+(noLoc?"":'<td>'+byChip(r)+'</td>')+'</tr>'}).join("")+'</tbody></table>';
 }
@@ -741,7 +760,7 @@ function tabsFor(){
   if(isStaff())t.push(["collab","Співпраці","handshake"]);
   return t;
 }
-function openCount(){return inM(5).filter(isOpen).length}
+function openCount(){return waiting().length}
 function side(){
   var on=S.loc&&!oneLoc()?"locs":S.tab,n=openCount();
   return '<aside class="side"><div class="brand"><img class="lh-l" src="img/logo-h.png" alt="Кебабця"><img class="lh-d" src="img/logo-h-dark.png" alt="Кебабця"><span>Скарги гостей</span></div>'+
@@ -769,15 +788,17 @@ function head(title,sub,crumb,right,noMonth){
 
 // ================= ОГЛЯД =================
 function renderHome(){
-  var cur=inM(5),prev=inM(4),open=cur.filter(isOpen).sort(oldestFirst),done=cur.length-open.length,late=open.filter(isLate).length;
+  var cur=inM(5),prev=inM(4),open=waiting().sort(oldestFirst),done=cur.filter(function(r){return !isOpen(r)}).length,late=open.filter(isLate).length,old=open.filter(carried).length;
   var rows=locRows(),gl=rows.filter(function(x){return x.gs!=null&&x.ge!=null});
-  var gS=gl.length?gl.reduce(function(s,x){return s+x.gs},0)/gl.length:null,gE=gl.length?gl.reduce(function(s,x){return s+x.ge},0)/gl.length:null;
+  // network average weighted by each location's number of reviews (a place with 900 reviews counts more than one with 30)
+  var gw=function(k){var n=0,s=0;gl.forEach(function(x){var w=x.g&&x.g.total?x.g.total:1;n+=w;s+=x[k]*w});return n?s/n:null};
+  var gS=gw("gs"),gE=gw("ge");
   var h=head("Огляд",LOCS.length+" "+plural(LOCS.length,"точка","точки","точок")+" · "+MNOM[5]+" "+S.mk.slice(0,4)+" · Google і чеки оновлюються щодня",null,'<button class="btn2 lp-only" data-export>'+I("file")+'Звіт Excel у чат</button>');
   h+=kpiStrip([
     ["Скарг за місяць",cur.length,"",cChip(cur.length,prev.length)+'<span>проти '+prev.length+' у '+MLOC[4]+'</span>','data-golist="all"'],
-    ["Чекають рішення",open.length,"",late?'<span class="chip bad">'+late+' довше '+LATE+' днів</span>':open.length?'<span>усі свіжі</span>':'<span class="chip good">усе вирішено</span>','data-golist="open"'],
+    ["Чекають рішення",open.length,"",(late?'<span class="chip bad">'+late+' від '+LATE+' днів</span>':open.length?'<span>усі свіжі</span>':'<span class="chip good">усе вирішено</span>')+(old?'<span>'+old+' з минулих місяців</span>':""),'data-golist="open"'],
     ["Вирішено",done,cur.length?"з "+cur.length:"",cur.length?'<span class="chip good">'+Math.round(done/cur.length*100)+'%</span>'+avgSolveTxt(cur):'<span>скарг ще немає</span>','data-golist="done"'],
-    ["Google, середня",gE!=null?f1(gE):"—","",gE!=null?gChip(gS,gE)+'<span>було '+f1(gS)+' на 1 '+MGEN[5]+'</span>':'<span>після першої перевірки</span>']
+    ["Google, середня",gE!=null?f1(gE):"—","",gE!=null?gChip(gS,gE)+'<span>було '+f1(gS)+' на 1 '+MGEN[5]+', з вагою за кількістю відгуків</span>':'<span>після першої перевірки</span>']
   ]);
   // attention: long waits, Google drops, more complaints than last month
   var at=[];
@@ -788,7 +809,7 @@ function renderHome(){
   var k=Math.max(5,at.length);
   S.ctx=open.map(function(r){return r.id});
   h+='<div class="row r-6040"><div class="card fill"><div class="ch-h"><h2>Чекають рішення</h2><span class="hn lp-only">спершу найстаріші</span>'+(open.length?'<button class="lk" data-golist="open">Усі '+open.length+I("right")+'</button>':"")+'</div>'+
-     (open.length?'<div class="list">'+open.slice(0,k).map(function(r){return qRow(r)}).join("")+'</div>':'<div class="empty">'+(cur.length?"Усі скарги за "+MNOM[5]+" вирішено":"Скарг за "+MNOM[5]+" ще немає. Надішліть скриншот боту або натисніть «Нова скарга».")+'</div>')+'</div>'+
+     (open.length?'<div class="list">'+open.slice(0,k).map(function(r){return qRow(r)}).join("")+'</div>':'<div class="empty">'+(cur.length?"Усі скарги вирішено":"Скарг за "+MNOM[5]+" ще немає. Надішліть скриншот боту або натисніть «Нова скарга».")+'</div>')+'</div>'+
      '<div class="card fill"><div class="ch-h"><h2>Потребують уваги</h2></div>'+(at.length?'<div class="list">'+at.join("")+'</div>':'<div class="empty">Усе спокійно: немає скарг, що довго чекають, і Google ніде не падає</div>')+'</div></div>';
   if(cur.length){
     var cc=count(cur,function(r){return r.ch}),tc=count(cur,function(r){return r.themes});
@@ -806,27 +827,32 @@ function renderHome(){
   }
   return h;
 }
-function avgSolveTxt(list){var d=solveDays(list);return d==null?"":'<span>за '+f1(d)+' '+plural(Math.round(d),"день","дні","днів").replace("день","дня")+'</span>'}
-function solveDays(list){var x=list.filter(function(r){return !isOpen(r)&&r.resolved&&r.created});if(!x.length)return null;
-  return x.reduce(function(s,r){return s+Math.max(0,(Date.parse(r.resolved)-Date.parse(r.created))/864e5)},0)/x.length}
+function avgSolveTxt(list){var d=solveDays(list);return d==null?"":'<span>в середньому '+f1(d)+' '+plural(Math.round(d),"день","дні","днів").replace("день","дня")+'</span>'}
+// average days from adding to the solution; a complaint still open counts with the days it has waited so far,
+// so leaving complaints open makes the number worse, not better (owner 2026-11-02)
+function solveDays(list){var now=Date.now(),x=list.filter(function(r){return r.created&&(isOpen(r)||r.resolved)});if(!x.length)return null;
+  return x.reduce(function(s,r){return s+Math.max(0,((isOpen(r)?now:Date.parse(r.resolved))-Date.parse(r.created))/864e5)},0)/x.length}
 
 // ================= СКАРГИ (черга) =================
-function queueList(st){var Q=S.q,t=Q.text.trim().toLowerCase();return inM(5).filter(function(r){
+// «Чекають» and «Усі» also hold older unresolved complaints; «Вирішені» only this month's
+function queueList(st){var Q=S.q,t=Q.text.trim().toLowerCase();return items.filter(function(r){if(r.m!==5&&!carried(r))return false;
   if(st==="open"&&!isOpen(r))return false;if(st==="done"&&isOpen(r))return false;
   if(Q.loc&&r.loc!==Q.loc)return false;if(Q.ch&&r.ch!==Q.ch)return false;if(Q.topic&&r.themes.indexOf(Q.topic)<0)return false;
   if(t&&(r.text+" "+r.loc+" "+r.solution+" "+r.ch+" "+r.who).toLowerCase().indexOf(t)<0)return false;return true})}
 function renderQueue(){
-  var Q=S.q,cur=inM(5),prev=inM(4),open=cur.filter(isOpen),late=open.filter(isLate).length;
+  var Q=S.q,cur=inM(5),prev=inM(4),open=waiting(),late=open.filter(isLate).length,old=open.filter(carried).length;
+  // «Нові сьогодні» and «Вирішено за тиждень» always count from today, whatever month is open
   var today=items.filter(function(r){return kyivDay(r.created)===ME.today}),tch=Object.keys(count(today,function(r){return r.ch}));
   var wk=items.filter(function(r){return r.resolved&&daysBetween(kyivDay(r.resolved),ME.today)<7}),wkw=count(wk.filter(function(r){return r.who}),function(r){return r.who});
-  var sd=solveDays(cur),sp=solveDays(prev);
+  var sd=solveDays(cur),sp=solveDays(prev),closed=cur.length?Math.round(cur.filter(function(r){return !isOpen(r)}).length/cur.length*100):null;
+  var longest=open.reduce(function(m,r){return Math.max(m,age(r))},0);
   var title=isLocAdmin()?"Скарги":"Скарги",sub=(Q.loc?esc(shortLoc(Q.loc)):oneLoc()?esc(shortLoc(LOCS[0])):isLocAdmin()?"Ваші точки":"Усі точки")+" · "+MNOM[5]+" "+S.mk.slice(0,4);
   var h=head(title,sub,null,'<button class="btn2 lp-only" data-export>'+I("file")+'Excel</button>');
   h+=kpiStrip([
-    ["Чекають рішення",open.length,"",late?'<span class="chip bad">'+late+' довше '+LATE+' днів</span>':'<span>'+(open.length?"усі свіжі":"нічого не чекає")+'</span>'],
+    ["Чекають рішення",open.length,"",(late?'<span class="chip bad">'+late+' від '+LATE+' днів</span>':'<span>'+(open.length?"усі свіжі":"нічого не чекає")+'</span>')+(old?'<span>'+old+' з минулих місяців</span>':"")],
     ["Нові сьогодні",today.length,"",'<span>'+(today.length?esc(tch.slice(0,2).join(", "))+(tch.length>2?" і ще "+(tch.length-2):""):"поки немає")+'</span>'],
     ["Вирішено за тиждень",wk.length,"",'<span>'+(Object.keys(wkw).length?esc(Object.keys(wkw).sort(function(a,b){return wkw[b]-wkw[a]}).map(function(w){return w+" "+wkw[w]}).join(" · ")):"останні 7 днів")+'</span>'],
-    ["Середній час рішення",sd==null?"—":f1(sd),sd==null?"":"дня",sd!=null&&sp!=null?(function(){var d=Math.round((sd-sp)*10)/10;return (d?(d<0?'<span class="chip good">▼ '+f1(-d)+'</span><span>швидше, ніж у '+MLOC[4]+'</span>':'<span class="chip bad">▲ '+f1(d)+'</span><span>повільніше, ніж у '+MLOC[4]+'</span>'):'<span>як у '+MLOC[4]+'</span>')})():'<span>від додавання до рішення</span>']
+    ["Середній час рішення",sd==null?"—":f1(sd),sd==null?"":"дня",(closed!=null?'<span class="chip '+(closed>=80?"good":closed>=50?"warn":"bad")+'">закрито '+closed+'%</span>':"")+(longest?'<span>найдовше чекає '+longest+' дн</span>':sd!=null&&sp!=null?'<span>у '+MLOC[4]+' '+f1(sp)+'</span>':'<span>відкриті теж рахуються</span>')]
   ]);
   var nO=queueList("open").length,nD=queueList("done").length,list=queueList(Q.st).sort(Q.st==="open"?oldestFirst:function(a,b){return b.date<a.date?-1:b.date>a.date?1:b.id-a.id});
   S.ctx=list.map(function(r){return r.id});
@@ -836,7 +862,7 @@ function renderQueue(){
     (Q.topic?'<button class="btn2 flt on" data-qtopic>'+esc(Q.topic)+I("x")+'</button>':"")+
     '<label class="search">'+I("search")+'<input id="qtext" type="search" placeholder="Пошук у тексті" value="'+esc(Q.text)+'" aria-label="Пошук у скаргах"></label></div>'+
     (list.length?(PHONE.matches?'<div class="list">'+list.map(function(r){return qRow(r)}).join("")+'</div>':qTable(list)):'<div class="empty">'+(Q.text?"Нічого не знайдено":Q.st==="open"?"Усе вирішено, нічого не чекає":"Скарг немає")+'</div>')+
-    (list.length?'<div class="tfoot"><span>'+(Q.st==="open"?"Спершу ті, що чекають найдовше. Червоні чекають довше "+LATE+" днів.":"Спершу найновіші.")+'</span><span>'+nSk(list.length)+'</span></div>':"")+'</div>';
+    (list.length?'<div class="tfoot"><span>'+(Q.st==="open"?"Спершу ті, що чекають найдовше. Жовті чекають від 1 дня, червоні від "+LATE+" днів.":"Спершу найновіші.")+'</span><span>'+nSk(list.length)+'</span></div>':"")+'</div>';
   return h;
 }
 
@@ -847,7 +873,7 @@ function renderLocs(){
   var up=rows.filter(function(x){return gDrop(x)>0}).sort(function(a,b){return gDrop(b)-gDrop(a)}),dn=rows.filter(function(x){return gDrop(x)<0}).sort(function(a,b){return gDrop(a)-gDrop(b)});
   var cities={};rows.forEach(function(x){var c=parts(x.l).city||"Інші";cities[c]=(cities[c]||0)+1});
   var main=Object.keys(cities).sort(function(a,b){return cities[b]-cities[a]})[0];
-  var h=head("Точки",LOCS.length+" "+plural(LOCS.length,"точка","точки","точок")+" · "+nSk(cur.length)+" · "+cur.filter(isOpen).length+" чекають рішення",null,'<button class="btn2 lp-only" data-export>'+I("file")+'Excel</button>');
+  var h=head("Точки",LOCS.length+" "+plural(LOCS.length,"точка","точки","точок")+" · "+nSk(cur.length)+" · "+waiting().length+" чекають рішення",null,'<button class="btn2 lp-only" data-export>'+I("file")+'Excel</button>');
   h+=kpiStrip([
     ["Точок зі скаргами",withC,"з "+rows.length,'<span>'+(rows.length-withC)+' '+plural(rows.length-withC,"точка","точки","точок")+' без жодної скарги</span>'],
     ["Скарг на чеки",totC?pct(totN,totC):"—","",totC&&totN?'<span>1 скарга на '+fmtN(totC/totN)+' чеків</span>':'<span>'+(totC?"скарг немає":"чеки ще не підтягнулись")+'</span>'],
@@ -867,20 +893,20 @@ function renderLocs(){
 // ================= ТОЧКА =================
 function renderCab(){
   var l=S.loc,C=S.cab,p=parts(l),mine=inM(5).filter(function(r){return r.loc===l}),prevN=inM(4).filter(function(r){return r.loc===l}).length,g=gOf(l,5),chk=chkOf(l);
-  var open=mine.filter(isOpen),late=open.filter(isLate).length,cc=count(mine,function(r){return r.ch}),tc=count(mine,function(r){return r.themes});
+  var open=waiting().filter(function(r){return r.loc===l}),late=open.filter(isLate).length,oldL=open.filter(carried),old=oldL.length,cc=count(mine,function(r){return r.ch}),tc=count(mine,function(r){return r.themes});
   var crumb=oneLoc()?null:(S.from==="queue"?"Скарги":S.from==="home"?"Огляд":"Точки");
   var h=head(p.short,esc(locSub(l)),crumb,'<button class="btnk btna lp-only" data-add>'+I("plus")+'Скарга</button>');
   var gs=g?g.start:null,ge=gNow(g);
   h+=kpiStrip([
     ["Скарг за "+MNOM[5],mine.length,"",cChip(mine.length,prevN)+'<span>було '+prevN+'</span>'],
-    ["Чекають рішення",open.length,"",late?'<span class="chip bad">'+late+' довше '+LATE+' днів</span>':'<span>'+(open.length?"усі свіжі":"нічого не чекає")+'</span>'],
+    ["Чекають рішення",open.length,"",(late?'<span class="chip bad">'+late+' від '+LATE+' днів</span>':'<span>'+(open.length?"усі свіжі":"нічого не чекає")+'</span>')+(old?'<span>'+old+' з минулих місяців</span>':"")],
     ["Скарг на чеки",chk?(mine.length?pct(mine.length,chk):"0%"):"—","",chk?'<span>'+(mine.length?"1 на "+fmtN(chk/mine.length)+" · ":"")+fmtN(chk)+' чеків</span>':'<span>чеки ще не підтягнулись</span>'],
     ["Google за місяць",ge!=null?f1(ge):"—","",ge!=null?gChip(gs,ge)+(gs!=null?'<span>було '+f1(gs)+'</span>':""):'<span>після першої перевірки</span>']
   ]);
-  var shown=mine.filter(function(r){if(C.ch&&r.ch!==C.ch)return false;if(C.st==="open")return isOpen(r);if(C.st==="done")return !isOpen(r);return true})
+  var shown=mine.concat(oldL).filter(function(r){if(C.ch&&r.ch!==C.ch)return false;if(C.st==="open")return isOpen(r);if(C.st==="done")return !isOpen(r);return true})
     .sort(function(a,b){var oa=isOpen(a),ob=isOpen(b);if(oa!==ob)return oa?-1:1;return oa?oldestFirst(a,b):(b.date<a.date?-1:b.date>a.date?1:b.id-a.id)});
   S.ctx=shown.map(function(r){return r.id});
-  h+='<div class="row r-cab"><div class="card fill"><div class="tb"><div class="seg"><button data-cst="all" class="'+(C.st==="all"?"on":"")+'">Усі <i>'+mine.length+'</i></button><button data-cst="open" class="'+(C.st==="open"?"on":"")+'">Чекають <i>'+open.length+'</i></button><button data-cst="done" class="'+(C.st==="done"?"on":"")+'">Вирішені <i>'+(mine.length-open.length)+'</i></button></div>'+
+  h+='<div class="row r-cab"><div class="card fill"><div class="tb"><div class="seg"><button data-cst="all" class="'+(C.st==="all"?"on":"")+'">Усі <i>'+(mine.length+old)+'</i></button><button data-cst="open" class="'+(C.st==="open"?"on":"")+'">Чекають <i>'+open.length+'</i></button><button data-cst="done" class="'+(C.st==="done"?"on":"")+'">Вирішені <i>'+mine.filter(function(r){return !isOpen(r)}).length+'</i></button></div>'+
     (Object.keys(cc).length>1||C.ch?'<button class="btn2 flt'+(C.ch?" on":"")+'" style="margin-left:auto" data-cch>Канал: <b>'+esc(C.ch||"усі")+'</b>'+I("down")+'</button>':"")+'</div>'+
     (shown.length?(PHONE.matches?'<div class="list">'+shown.map(function(r){return qRow(r,1)}).join("")+'</div>':qTable(shown,1)):'<div class="empty">'+(mine.length?"Немає скарг з таким фільтром":"Скарг за "+MNOM[5]+" немає")+'</div>')+'</div>';
   // right column: Google, app ratings, 6 months
@@ -953,22 +979,24 @@ function busy(btn,on){if(!btn)return;btn.disabled=on;if(on){btn.dataset.t=btn.in
 function openItem(idn){
   var r=items.filter(function(x){return x.id===idn})[0];if(!r)return;
   var ctx=S.ctx.indexOf(idn)>=0?S.ctx.slice():[idn],pos=ctx.indexOf(idn);
-  var staff=isStaff(),st={result:r.result,who:r.who||(staff?ME.user.name:"")};
+  var staff=canSolve(r),st={result:r.result,who:r.who||(staff?ME.user.name:"")},RES=resultsFor(r);
+  if(r.result&&RES.indexOf(r.result)<0)RES=RES.concat([r.result]);
   var p=parts(r.loc),a=addedBy(r),open=isOpen(r),ag=age(r);
-  var body='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+(open?(r.taken?'<span class="pill done">В роботі · '+esc(PEOPLE[r.takenBy]||"адмін")+'</span>':'<span class="pill '+(ag>LATE?"late":"open")+'">'+(ag?"Чекає "+ag+" "+plural(ag,"день","дні","днів"):"Нова, чекає рішення")+'</span>'):'<span class="pill done">Вирішено'+(r.who?" · "+esc(r.who):"")+'</span>')+
+  var body='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+(open?(r.taken?'<span class="pill done">В роботі · '+esc(PEOPLE[r.takenBy]||"адмін")+'</span>':'<span class="pill '+(ag>=LATE?"late":"open")+'">'+(ag?"Чекає "+ag+" "+plural(ag,"день","дні","днів"):"Нова, чекає рішення")+'</span>'):'<span class="pill done">Вирішено'+(r.who?" · "+esc(r.who):"")+'</span>')+
     '<span class="byw'+(a.auto?" auto":"")+'" style="margin-left:auto"><span class="ava">'+(a.auto?I("spark"):esc(initials(a.name)))+'</span>Додав(ла): '+esc(a.name)+'</span></div>';
   body+='<div class="mini"><div><div class="l">Точка</div><b>'+esc(p.short)+'</b><div class="s">'+esc(locSub(r.loc))+'</div>'+(oneLoc()?"":'<button data-openloc="'+esc(r.loc)+'">Сторінка точки →</button>')+'</div>'+
     '<div><div class="l">Канал</div><b>'+cb(r.ch,1)+esc(r.ch)+'</b><div class="s">'+(r.rating?stars(r.rating)+' оцінка '+r.rating+' з 5':"відгук "+r.day+" "+GEN[mNum(r.date)])+'</div></div></div>';
   body+='<div><div class="lbl">Що написав гість</div><div class="quote">'+esc(r.text)+'</div>'+(r.themes.length?'<div class="tags" style="margin-top:8px">'+r.themes.map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join("")+'</div>':"")+
     (r.photo?'<div class="photo-b" id="phBox"><span class="thumb">'+I("img")+'</span><button class="lk" id="phBtn">Показати фото</button></div>':"")+'</div>';
   if(staff){
-    body+='<div><div class="lbl">Рішення <span class="req">*</span></div><textarea id="sol" placeholder="Що зробили: подзвонили, повернули кошти, переглянули камери…">'+esc(r.solution)+'</textarea></div>';
-    body+='<div><div class="lbl">Результат <span class="req">*</span></div><div class="opts" id="res">'+RESULTS.map(function(x){return '<button class="opt'+(st.result===x?" on":"")+'" data-v="'+esc(x)+'"><span class="rd"></span>'+esc(x)+'</button>'}).join("")+'</div></div>';
+    var cam=INTERNAL.indexOf(r.ch)>=0;
+    body+='<div><div class="lbl">'+(cam?"Що показали камери і що зробили":"Рішення")+' <span class="req">*</span></div><textarea id="sol" placeholder="'+(cam?"Переглянули камери: … Поговорили з …":"Що зробили: подзвонили, повернули кошти, переглянули камери…")+'">'+esc(r.solution)+'</textarea></div>';
+    body+='<div><div class="lbl">Результат <span class="req">*</span></div><div class="opts" id="res">'+RES.map(function(x){return '<button class="opt'+(st.result===x?" on":"")+'" data-v="'+esc(x)+'"><span class="rd"></span>'+esc(x)+'</button>'}).join("")+'</div></div>';
     var who=WHO.slice();if(st.who&&who.indexOf(st.who)<0)who.push(st.who);
-    body+='<div><div class="lbl">Хто вів комунікацію</div><div class="who" id="who">'+who.map(function(w){return '<button class="'+(st.who===w?"on":"")+'" data-v="'+esc(w)+'"><span class="ava">'+esc(initials(w))+'</span>'+esc(w)+'</button>'}).join("")+'</div></div>';
+    if(isStaff())body+='<div><div class="lbl">Хто вів комунікацію</div><div class="who" id="who">'+who.map(function(w){return '<button class="'+(st.who===w?"on":"")+'" data-v="'+esc(w)+'"><span class="ava">'+esc(initials(w))+'</span>'+esc(w)+'</button>'}).join("")+'</div></div>';
   }else if(!open){
     body+='<div><div class="lbl">Рішення</div><div class="quote">'+esc(r.solution||"—")+'</div><div class="muted" style="font-size:12.5px;margin-top:6px">'+esc(r.result)+'</div></div>';
-  }else body+='<div class="info">Рішення запише комунікаційник. Ви побачите його тут.</div>';
+  }else body+='<div class="info">Рішення запише '+solverTxt(r)+'. Ви побачите його тут.</div>';
   // history from what the server knows: when it came in and who added it, when it was resolved and by whom
   var tl=[];
   if(!open)tl.push(['Вирішено: '+esc(r.result)+(r.who?' · '+esc(r.who):""),dLong(r.resolved)]);
@@ -991,9 +1019,9 @@ function openItem(idn){
     var sol=el.querySelector("#sol"),save=el.querySelector("#save"),hint=el.querySelector("#sHint");
     function check(){var ok=sol.value.trim()&&st.result;save.disabled=!ok;hint.textContent=ok?(open?"Після збереження скарга піде у «Вирішені»":""):"Запишіть рішення і виберіть результат"}
     function pickIn(sel,key,toggle){var box=el.querySelector(sel);box.addEventListener("click",function(e){var x=e.target.closest("[data-v]");if(!x)return;st[key]=toggle&&st[key]===x.dataset.v?"":x.dataset.v;box.querySelectorAll("[data-v]").forEach(function(y){y.classList.toggle("on",y.dataset.v===st[key])});check()})}
-    pickIn("#res","result");pickIn("#who","who",true);sol.addEventListener("input",check);check();
+    pickIn("#res","result");if(el.querySelector("#who"))pickIn("#who","who",true);sol.addEventListener("input",check);check();
     save.addEventListener("click",function(){if(save.disabled)return;busy(save,true);
-      api("save",{id:r.id,solution:sol.value.trim(),result:st.result,who:st.who}).then(function(row){r.solution=sol.value.trim();r.result=st.result;r.who=st.who;r.resolved=row&&row.resolved_at||new Date().toISOString();
+      api("save",{id:r.id,solution:sol.value.trim(),result:st.result,who:st.who}).then(function(row){r.solution=sol.value.trim();r.result=st.result;r.who=row&&row.who||st.who;r.resolved=row&&row.resolved_at||new Date().toISOString();
         closePanel();render();toast(open?"Скаргу вирішено, вона тепер у «Вирішені»":"Зміни збережено")})
         .catch(function(e){busy(save,false);toast(e.message)})});
   }});
@@ -1073,10 +1101,11 @@ function sendExport(btn){if(btn)busy(btn,true);api("export",{month:S.mk}).then(f
 function openSettings(){
   var body='<div><button class="li" data-s="users"><span class="ic">'+I("users")+'</span><span class="tx">Доступи<small>хто користується апкою, нові коди</small></span>'+I("right")+'</button>'+
     '<button class="li" data-s="survey"><span class="ic">'+I("users")+'</span><span class="tx">Опитування команди<small>хто пройшов, відповіді, зауваження до апки</small></span>'+I("right")+'</button>'+
+    '<button class="li" data-s="checkins"><span class="ic">'+I("bell")+'</span><span class="tx">Були нові скарги?<small>хто відповів на питання бота за 3 дні</small></span>'+I("right")+'</button>'+
     '<button class="li" data-s="checks"><span class="ic">'+I("receipt")+'</span><span class="tx">Чеки за '+MNOM[5]+'<small>Poster підтягує щодня, тут можна виправити</small></span>'+I("right")+'</button>'+
     '<button class="li" data-s="locs"><span class="ic">'+I("pin")+'</span><span class="tx">Точки і їхні інші назви<small>щоб ШІ впізнавав точку на скриншоті</small></span>'+I("right")+'</button></div>'+
     '<div class="muted" style="font-size:12.5px">Бот: @'+esc(ME.bot)+'</div>';
-  openPanel({title:"Налаштування",narrow:true,body:body,mount:function(el){el.querySelector(".dr-b").addEventListener("click",function(e){var o=e.target.closest("[data-s]");if(!o)return;({users:openUsers,survey:openSurveyTeam,checks:openChecks,locs:openLocsAdmin})[o.dataset.s]()})}});
+  openPanel({title:"Налаштування",narrow:true,body:body,mount:function(el){el.querySelector(".dr-b").addEventListener("click",function(e){var o=e.target.closest("[data-s]");if(!o)return;({users:openUsers,survey:openSurveyTeam,checkins:openCheckins,checks:openChecks,locs:openLocsAdmin})[o.dataset.s]()})}});
 }
 function openUsers(){
   openPanel({title:"Доступи",body:'<div class="empty">Завантаження…</div>',mount:function(el){
@@ -1157,10 +1186,24 @@ function openInvite(done){
   }});
 }
 function openChecks(){
-  var body='<div class="muted" style="font-size:12.5px">Кількість чеків за '+MNOM[5]+' '+S.mk.slice(0,4)+' по кожній точці. З них рахується, яка частка гостей скаржиться. Poster оновлює їх щодня.</div><div>'+
-    LOCS.map(function(l){var v=chkOf(l);return '<div class="li"><span class="tx">'+esc(shortLoc(l))+'<small>'+esc(locSub(l))+'</small></span><input class="inp num" style="width:110px;flex:none" type="number" min="0" inputmode="numeric" data-loc="'+LOCBY[l].id+'" value="'+(v==null?"":v)+'" placeholder="0"></div>'}).join("")+'</div>';
-  openPanel({title:"Чеки за "+MNOM[5],body:body,foot:'<span class="sp"></span><button class="btnk" id="chkSave">Зберегти</button>',mount:function(el){el.querySelector("#chkSave").addEventListener("click",function(){var vals={},btn=this;el.querySelectorAll("[data-loc]").forEach(function(i){if(i.value!=="")vals[i.dataset.loc]=i.value});
-    busy(btn,true);api("checks_save",{month:S.mk,values:vals}).then(function(){closeAll();toast("Чеки збережено");loadMonth()}).catch(function(e){busy(btn,false);toast(e.message)})})}});
+  var body='<div class="muted" style="font-size:12.5px">Кількість чеків за '+MNOM[5]+' '+S.mk.slice(0,4)+' по кожній точці. З них рахується, яка частка гостей скаржиться. Poster оновлює їх щодня. Число, яке ви змінили тут, Poster більше не перезаписує. Щоб повернути Poster, зітріть число.</div><div>'+
+    LOCS.map(function(l){var v=chkOf(l),man=CHKM[l+"|"+S.mk];return '<div class="li"><span class="tx">'+esc(shortLoc(l))+'<small>'+esc(locSub(l))+(v!=null?" · "+(man?"вписано вручну":"з Poster"):"")+'</small></span><input class="inp num" style="width:110px;flex:none" type="number" min="0" inputmode="numeric" data-loc="'+LOCBY[l].id+'" data-was="'+(v==null?"":v)+'" value="'+(v==null?"":v)+'" placeholder="0"></div>'}).join("")+'</div>';
+  openPanel({title:"Чеки за "+MNOM[5],body:body,foot:'<span class="sp"></span><button class="btnk" id="chkSave">Зберегти</button>',mount:function(el){el.querySelector("#chkSave").addEventListener("click",function(){var vals={},btn=this;var cleared=[];el.querySelectorAll("[data-loc]").forEach(function(i){if(i.value===i.dataset.was)return;if(i.value!=="")vals[i.dataset.loc]=i.value;else cleared.push(+i.dataset.loc)});
+    busy(btn,true);api("checks_save",{month:S.mk,values:vals,cleared:cleared}).then(function(){closeAll();toast("Чеки збережено");loadMonth()}).catch(function(e){busy(btn,false);toast(e.message)})})}});
+}
+// Answers to the bot's «Були нові скарги?» (12:00, 16:00, 20:00): «Немає», «Додав(ла) скаргу» or no answer.
+function openCheckins(){
+  openPanel({title:"Були нові скарги?",narrow:true,body:'<div class="empty">Завантаження…</div>',mount:function(el){var b=el.querySelector(".dr-b");
+    api("checkins").then(function(x){
+      if(!x.rows.length){b.innerHTML='<div class="empty">Бот ще не питав. Питання приходить операторам, Ані й Олені о 12:00, 16:00 і 20:00.</div>';return}
+      var nm={};x.people.forEach(function(p){nm[p.tg_id]=p.name});var slots=[];x.rows.forEach(function(r){if(slots.indexOf(r.slot)<0)slots.push(r.slot)});
+      var miss=x.rows.filter(function(r){return !r.answer}).length;
+      b.innerHTML='<div class="muted" style="font-size:12.5px">Бот питає операторів, Аню й Олену о 12:00, 16:00 і 20:00. Без відповіді за 3 дні: <b>'+miss+'</b></div>'+slots.map(function(sl){
+        var d=sl.slice(8,10)+"."+sl.slice(5,7)+" о "+sl.slice(11);
+        return '<div class="sect">'+d+'</div><div>'+x.rows.filter(function(r){return r.slot===sl}).map(function(r){
+          var a=r.answer==="none"?'<span class="chip good">немає скарг</span>':r.answer==="added"?'<span class="chip warn">додав(ла) скаргу</span>':'<span class="chip bad">не відповів(ла)</span>';
+          return '<div class="li"><span class="ava">'+esc(initials(nm[r.tg_id]||"?"))+'</span><span class="tx">'+esc(nm[r.tg_id]||"—")+(r.answered_at?'<small>'+dLong(r.answered_at)+'</small>':"")+'</span>'+a+'</div>'}).join("")+'</div>'}).join("");
+    }).catch(function(e){b.innerHTML='<div class="empty">'+esc(e.message)+'</div>'})}});
 }
 function openLocsAdmin(){
   openPanel({title:"Точки",body:'<div class="empty">Завантаження…</div>',mount:function(el){
@@ -1310,7 +1353,7 @@ function svTour(){
   var mine=isLocAdmin();
   var chat='<div class="dm"><div class="dm-m out">Скриншот із Glovo, Bolt чи текст гостя</div><div class="dm-m"><b>✨ Перевірте скаргу</b>Точка: Кульпарківська<br>Канал: Glovo · Тема: Холодний<br>Усе вірно?</div><div class="dm-k"><span class="w">✓ Зберегти</span><span>Точка</span><span>Канал</span><span>Текст</span></div></div>';
   var W='<div class="dm-m" style="max-width:100%;width:100%">';
-  var list='<div class="dm">'+W+'<b>'+(mine?"Скарги ваших точок":"Скарги")+' · чекають рішення</b>Найстаріші зверху. Червоним позначено ті, що чекають довше 3 днів.</div>'+W+'<b>🔴 Кульпарківська · Glovo · 4 дні</b>Привезли холодний кебаб, соус протік.</div>'+W+'<b>Сихів · Google · 1 день</b>Довго чекали замовлення, 40 хвилин.</div>'+W+'<b>Огляд і Точки</b>Скарги за місяць, теми, Google-рейтинг і скарги на 1000 чеків.</div></div>';
+  var list='<div class="dm">'+W+'<b>'+(mine?"Скарги ваших точок":"Скарги")+' · чекають рішення</b>Найстаріші зверху. Жовтим позначено ті, що чекають від 1 дня, червоним від 3 днів.</div>'+W+'<b>🔴 Кульпарківська · Glovo · 4 дні</b>Привезли холодний кебаб, соус протік.</div>'+W+'<b>Сихів · Google · 1 день</b>Довго чекали замовлення, 40 хвилин.</div>'+W+'<b>Огляд і Точки</b>Скарги за місяць, теми, Google-рейтинг і яка частка чеків закінчилась скаргою, у відсотках.</div></div>';
   var hist='<div class="dm">'+W+'<b>Скарга · Glovo · 12:40</b>Привезли холодний кебаб, соус протік.</div>'+W+'<b>Рішення · 14:05</b>Подивились камери: замовлення чекало курʼєра 25 хв. Написали в підтримку Glovo, гроші повернули.</div>'+W+'<b>Результат · ✓ Вирішено</b>Гість задоволений, відповів у чаті.</div>'+W+'<b>Історія</b>Хто додав скаргу, хто і коли записав рішення, усе з часом.</div></div>';
   var rem='<div class="dm"><div class="dm-m"><b>🔴 Нова скарга · Google</b>Довго чекали замовлення, 40 хвилин.</div><div class="dm-k"><span class="w">Відкрити скаргу</span></div><div class="dm-m"><b>☀️ Ранкова зведенка</b>2 скарги чекають рішення довше доби.</div><div class="dm-m out">💬 Зауваження до апки</div></div>';
   return [
@@ -1417,7 +1460,12 @@ function start(){
     // links from the bot: ?tab=queue opens the queue, ?item=123 opens that complaint
     var q=new URLSearchParams(location.search),tab=q.get("tab"),item=+q.get("item");
     if(tab&&tabsFor().some(function(t){return t[0]===tab}))S.tab=tab;
-    return loadMonth().then(function(){if(item&&items.some(function(r){return r.id===item}))openItem(item)})}).catch(showError);
+    return loadMonth().then(function(){
+      if(q.get("add"))openAdd(oneLoc()?LOCS[0]:null);
+      if(!item)return;
+      if(items.some(function(r){return r.id===item})){openItem(item);return}
+      // a complaint outside the loaded months: fetch just it
+      api("item",{id:item}).then(function(x){Object.assign(PEOPLE,x.people||{});if(!LOCNAME[x.item.location_id])return;items.push(toItem(x.item));openItem(item)}).catch(function(e){toast(e.message)})})}).catch(showError);
 }
 start();
 })();

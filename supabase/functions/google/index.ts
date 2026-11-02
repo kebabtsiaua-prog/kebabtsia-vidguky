@@ -63,7 +63,8 @@ async function fillMonth(month: string, locs: Loc[]) {
       start_rating: old?.start_rating ?? base.rating,
       end_rating: last.rating,
       total: last.count,
-      new_reviews: last.count! - base.count!,
+      // Never below zero: a first snapshot from another listing must not count as lost reviews.
+      new_reviews: Math.max(0, last.count! - base.count!),
     });
   }
   if (out.length) {

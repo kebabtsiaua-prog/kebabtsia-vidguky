@@ -81,7 +81,11 @@ async function fill(token: string) {
       if (await spotChecks(token, Number(s.spot_id), monthsBack(today)[1], today)) stray.push(`${s.spot_id} ${s.spot_name}`);
     } catch (_) { /* closed spot */ }
   }
-  const { error } = await db.from("checks_monthly").upsert(rows, { onConflict: "location_id,month" });
+  // Checks typed by hand stay as they are (owner 2026-11-02).
+  const { data: manual } = await db.from("checks_monthly").select("location_id,month").eq("manual", true);
+  const kept = new Set((manual ?? []).map((m) => `${m.location_id}|${String(m.month).slice(0, 10)}`));
+  const auto = rows.filter((r) => !kept.has(`${r.location_id}|${r.month.slice(0, 10)}`));
+  const { error } = await db.from("checks_monthly").upsert(auto, { onConflict: "location_id,month" });
   if (error) errors.push(`checks_monthly: ${error.message}`);
   const empty = rows.filter((r) => !r.checks).map((r) => `${(locs ?? []).find((l) => l.id === r.location_id)?.name} ${r.month.slice(0, 7)}`);
   return { ok: !errors.length, saved: rows.length, empty, idle, stray, errors };

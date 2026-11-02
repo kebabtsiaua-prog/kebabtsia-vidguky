@@ -15,7 +15,18 @@ export const RESULTS = [
   "Відповіли на відгук, гість не сконтактував",
   "Гість сконтактував, у процесі",
   "Гість не сконтактував",
+  // Glovo, Bolt and app ratings: nobody replies to the guest, the location admin checks the cameras (owner survey 2026-11-02).
+  "Підтвердилось, провели розмову з персоналом",
+  "Не підтвердилось по камерах",
 ];
+// Channels where the guest gets no reply and the location admin closes the complaint after checking the cameras.
+export const INTERNAL_CHANNELS = ["Glovo", "Bolt", "Оцінки в додатку"];
+// Channels the operators handle and close themselves (owner survey 2026-11-02).
+export const OPERATOR_CHANNELS = ["Сайт", "Оператори"];
+// One rule everywhere (owner 2026-11-02): a complaint waits from the day it reached the app; yellow from 1 day,
+// red from LATE_DAYS; a low rating is 1–3 stars.
+export const LATE_DAYS = 3;
+export const LOW_RATING = 3;
 export const ROLES: Record<string, string> = {
   admin: "Адміністратор",
   comms: "Комунікаційник",
@@ -136,6 +147,25 @@ export async function getUser(tgId: number): Promise<User | null> {
     if (!u.location_ids.length && u.location_id) u.location_ids = [u.location_id];
   }
   return u;
+}
+
+// Who may write the solution: admins and comms everything; a location admin Glovo, Bolt and app ratings of their
+// own locations; an operator the website and phone complaints (owner 2026-11-02).
+export function canSolve(u: User, c: { location_id: number; channel: string }): boolean {
+  if (u.role === "admin" || u.role === "comms") return true;
+  if (u.role === "loc_admin") return (ownLocations(u) ?? []).includes(c.location_id) && INTERNAL_CHANNELS.includes(c.channel);
+  if (u.role === "operator") return OPERATOR_CHANNELS.includes(c.channel);
+  return false;
+}
+// Days a complaint has waited: from the Kyiv day it reached the app (or the review day, if later), to today.
+// Complaints moved from the old sheet count from the review day.
+export function waitedDays(c: { happened_on: string; created_at: string | null; source: string }, today = kyivToday()): number {
+  let from = c.happened_on;
+  if (c.source !== "sheet" && c.created_at) {
+    const got = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv" }).format(new Date(c.created_at));
+    if (got > from) from = got;
+  }
+  return Math.max(0, Math.round((Date.parse(today) - Date.parse(from)) / 86400000));
 }
 
 // Locations a person may see: null means all of them.
