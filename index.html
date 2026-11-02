@@ -648,10 +648,11 @@ function appOf(l,i){var id=LOCBY[l]&&LOCBY[l].id;return D.app&&D.app[id+"|"+MK[i
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function inM(m){return items.filter(function(r){return r.m===m})}
 function isOpen(r){return !r.result}
-// unresolved from a month before the selected one: still waits, counted in its own month's statistics
-function carried(r){return isOpen(r)&&r.mk<S.mk}
-// what waits for a decision now: this month's open ones and every older one nobody resolved yet
-function waiting(){return items.filter(function(r){return isOpen(r)&&(r.m===5||r.mk<S.mk)})}
+// A complaint stays in its own month everywhere (owner 2026-11-02: «якщо то було в жовтні, воно там лишається»).
+// Older unresolved ones are not listed in a later month; Огляд only points to the month where they wait.
+function carried(r){return false}
+function waiting(){return inM(5).filter(isOpen)}
+function olderOpen(){var o={};items.forEach(function(r){if(isOpen(r)&&r.mk<S.mk)o[r.mk]=(o[r.mk]||0)+1});return Object.keys(o).sort().reverse().map(function(k){return [k,o[k]]})}
 function mTag(r){return r.mk<S.mk?'<span class="tag mt">з '+GEN[mNum(r.mk)]+'</span>':""}
 function f1(v){return v==null?"—":(+v).toFixed(1).replace(".",",")}
 function cap(s){return s?s[0].toUpperCase()+s.slice(1):s}
@@ -805,6 +806,8 @@ function renderHome(){
   open.filter(isLate).slice(0,3).forEach(function(r){at.push('<button class="at" data-item="'+r.id+'"><span class="ico bad">'+I("clock")+'</span><span class="b"><b>'+esc(shortLoc(r.loc))+'</b><span class="why">'+esc(r.ch)+' · скарга чекає '+age(r)+' дн</span></span><span class="chev">'+I("right")+'</span></button>')});
   gl.filter(function(x){return gDrop(x)<0}).sort(function(a,b){return gDrop(a)-gDrop(b)}).slice(0,3).forEach(function(x){at.push('<button class="at" data-loc="'+esc(x.l)+'"><span class="ico bad">'+I("tdown")+'</span><span class="b"><b>'+esc(shortLoc(x.l))+'</b><span class="why">Google '+f1(x.gs)+' → '+f1(x.ge)+' за місяць</span></span><span class="chev">'+I("right")+'</span></button>')});
   rows.filter(function(x){return x.n>x.p&&x.n>=2}).sort(function(a,b){return (b.n-b.p)-(a.n-a.p)}).slice(0,3).forEach(function(x){at.push('<button class="at" data-loc="'+esc(x.l)+'"><span class="ico warn">'+I("trend")+'</span><span class="b"><b>'+esc(shortLoc(x.l))+'</b><span class="why">'+nSk(x.n)+', у '+MLOC[4]+' '+plural(x.p,"була","було","було")+' '+x.p+'</span></span><span class="chev">'+I("right")+'</span></button>')});
+  // unresolved complaints of earlier months: a pointer to their month, they stay there
+  olderOpen().reverse().forEach(function(x){at.unshift('<button class="at" data-gomonth="'+x[0]+'"><span class="ico warn">'+I("cal")+'</span><span class="b"><b>'+cap(NOM[mNum(x[0])])+': '+x[1]+' не закрито</b><span class="why">Відкрити '+NOM[mNum(x[0])]+' і закрити звітність</span></span><span class="chev">'+I("right")+'</span></button>')});
   at=at.slice(0,6);
   var k=Math.max(5,at.length);
   S.ctx=open.map(function(r){return r.id});
@@ -1234,6 +1237,7 @@ app.addEventListener("click",function(e){
   if(t.closest("[data-settings]")){openSettings();return}
   if(t.closest("[data-back]")){goBack();return}
   if(t.closest("[data-month]")){pickMonth();return}
+  if((b=t.closest("[data-gomonth]"))){S.tab="queue";S.loc=null;S.q={st:"open",loc:null,ch:null,text:""};setMonth(b.dataset.gomonth);window.scrollTo(0,0);return}
   if((b=t.closest("[data-mstep]"))){setMonth(shiftMk(S.mk,+b.dataset.mstep));return}
   if((b=t.closest("[data-export]"))){sendExport(b);return}
   if(t.closest("[data-collab-add]")){openCollabAdd();return}
