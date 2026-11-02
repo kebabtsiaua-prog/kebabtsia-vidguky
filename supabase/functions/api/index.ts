@@ -3,9 +3,11 @@ import { syncSheet } from "../_shared/sheet.ts";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { parseComplaint } from "../_shared/ai.ts";
 import {
-  activeLocations, APP_URL, bootstrapAdmin, channelsFor, CHANNELS, db, esc, getUser, keywordTopics, kyivToday, newCode, ownLocations, redeemCode,
+  activeLocations, APP_URL, bootstrapAdmin, canSolve, channelsFor, INTERNAL_CHANNELS, CHANNELS, db, esc, getUser, keywordTopics, kyivToday, newCode, ownLocations, redeemCode,
   RESULTS, ROLES, savePhoto, telegramUser, tg, TOPICS, type User,
 } from "../_shared/common.ts";
+import { alertTake } from "../_shared/glovo.ts";
+import { checkinAdded, notifyNew } from "../_shared/remind.ts";
 import { FEEDBACK_KB, followUp, inviteText, locked, MIN, ownerId, SETS, setOf, type SurveyUser } from "../_shared/survey.ts";
 
 const CORS = {
@@ -56,6 +58,15 @@ async function monthData(u: User, month: string) {
   const cols = "id,location_id,channel,happened_on,text,topics,solution,result,who,photo_path,rating,source,created_by,created_at,resolved_at,taken_by,taken_at";
   const { data: items } = await scope(db.from("complaints").select(cols), u)
     .gte("happened_on", from).lt("happened_on", to).order("happened_on", { ascending: false }).order("id", { ascending: false });
+  // Outside the two loaded months but still needed (owner 2026-11-02): complaints from earlier months that nobody
+  // has resolved yet, so the team can finish them, and everything added or resolved in the last 8 days, so «Нові
+  // сьогодні» and «Вирішено за тиждень» count from today whatever month is open.
+  const since = new Date(Date.now() - 8 * 86400000).toISOString();
+  const { data: older } = await scope(db.from("complaints").select(cols), u).lt("happened_on", from).eq("result", "").limit(1000);
+  const { data: recent } = await scope(db.from("complaints").select(cols), u)
+    .or(`created_at.gte.${since},resolved_at.gte.${since}`).limit(1000);
+  const outside = (r: { happened_on: string }) => r.happened_on < from || r.happened_on >= to;
+  const extra = [...(older ?? []), ...(recent ?? []).filter((r: { id: number; happened_on: string }) => outside(r) && !(older ?? []).some((o: { id: number }) => o.id === r.id))];
   const { data: hist } = await scope(db.from("complaints").select("location_id,happened_on"), u)
     .gte("happened_on", sixFrom).lt("happened_on", to);
   const counts: Record<string, number> = {};
@@ -84,7 +95,7 @@ async function monthData(u: User, month: string) {
   }
   const { data: staff } = await db.from("users").select("name,role").eq("active", true).in("role", ["admin", "comms"]);
   // Names of whoever added or took a complaint, so the app can always show «хто додав» (also for people whose access was switched off).
-  const authors = [...new Set((items ?? []).flatMap((r: { created_by: number | null; taken_by: number | null }) => [r.created_by, r.taken_by]).filter(Boolean))];
+  const authors = [...new Set([...(items ?? []), ...extra].flatMap((r: { created_by: number | null; taken_by: number | null }) => [r.created_by, r.taken_by]).filter(Boolean))];
   const { data: who } = authors.length ? await db.from("users").select("tg_id,name").in("tg_id", authors) : { data: [] };
   const people: Record<string, string> = {};
   for (const p of who ?? []) people[p.tg_id] = p.name;
@@ -92,6 +103,7 @@ async function monthData(u: User, month: string) {
     month,
     locations: ownLocations(u) ? locations.filter((l) => ownLocations(u)!.includes(l.id)) : locations,
     items: items ?? [],
+    extra,
     counts,
     google: google ?? [],
     checks: checks ?? [],
@@ -103,7 +115,9 @@ async function monthData(u: User, month: string) {
 
 async function exportMonth(u: User, month: string) {
   const [from, to] = monthRange(month);
-  const locations = await activeLocations();
+  const own = ownLocations(u);
+  // A location admin gets only their own locations, the Google and checks blocks included (owner 2026-11-02).
+  const locations = (await activeLocations()).filter((l) => !own || own.includes(l.id));
   const { data: rows } = await scope(db.from("complaints").select("*"), u)
     .gte("happened_on", from).lt("happened_on", to).order("happened_on");
   const { data: google } = await db.from("google_monthly").select("*").eq("month", from);
@@ -120,7 +134,8 @@ async function exportMonth(u: User, month: string) {
     }
     if (g) {
       aoa.push([`відгуків у Google - ${g.total ?? ""} (нових ${g.new_reviews ?? ""})`]);
-      aoa.push([`Позитивні - ${g.positive ?? ""}`], [`Негативні - ${g.negative ?? ""}`]);
+      if (g.positive != null) aoa.push([`Позитивні - ${g.positive}`]);
+      if (g.negative != null) aoa.push([`Негативні - ${g.negative}`]);
       aoa.push([`Початкова оцінка місяця - ${g.start_rating ?? ""}`], [`Кінцева оцінка місяця - ${g.end_rating ?? ""}`]);
     }
     if (c) aoa.push([`Чеків за місяць - ${c.checks}; скарг - ${mine.length} (${c.checks ? ((mine.length / c.checks) * 100).toFixed(2) : "—"}%)`]);
@@ -330,6 +345,16 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
     case "data":
       return monthData(u, p.month);
 
+    // One complaint by id, for a link from the bot to a complaint outside the loaded months.
+    case "item": {
+      const { data: c } = await scope(db.from("complaints").select("id,location_id,channel,happened_on,text,topics,solution,result,who,photo_path,rating,source,created_by,created_at,resolved_at,taken_by,taken_at"), u)
+        .eq("id", Number(p.id)).maybeSingle();
+      must(c, "Скаргу не знайдено");
+      const ids = [c!.created_by, c!.taken_by].filter(Boolean);
+      const { data: who } = ids.length ? await db.from("users").select("tg_id,name").in("tg_id", ids) : { data: [] };
+      return { item: c, people: Object.fromEntries((who ?? []).map((x) => [x.tg_id, x.name])) };
+    }
+
     case "photo": {
       const { data: c } = await scope(db.from("complaints").select("photo_path"), u).eq("id", p.id).maybeSingle();
       must(c?.photo_path, "Фото немає");
@@ -357,7 +382,7 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
         text,
         topics: Array.isArray(p.topics) && p.topics.length ? p.topics.filter((t: string) => TOPICS.includes(t)) : keywordTopics(text),
         solution,
-        result: solution && isStaff(u) ? (RESULTS.includes(p.result) ? p.result : "Владнано") : "",
+        result: solution && isStaff(u) ? (RESULTS.includes(p.result) ? p.result : INTERNAL_CHANNELS.includes(p.channel) ? "Підтвердилось, провели розмову з персоналом" : "Владнано") : "",
         who: solution && isStaff(u) ? String(p.who || u.name) : "",
         resolved_at: solution && isStaff(u) ? new Date().toISOString() : null,
         rating: Number.isInteger(p.rating) && p.rating > 0 ? p.rating : null,
@@ -366,6 +391,13 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
       };
       const { data, error } = await db.from("complaints").insert(row).select().single();
       must(!error, "Не вдалося зберегти");
+      await checkinAdded(u.tg_id).catch(console.error);
+      // Whoever answers for this complaint hears about it at once (owner 2026-11-02): location admins for Glovo and
+      // Bolt, Аня and Олена for the rest. Nobody is told about a complaint that was resolved as it was added.
+      if (!data.result) {
+        if (data.channel === "Glovo" || data.channel === "Bolt") await alertTake(data.id, u.tg_id).catch(console.error);
+        else await notifyNew(data.id, u.tg_id).catch(console.error);
+      }
       if (p.photo?.data) {
         const bin = Uint8Array.from(atob(p.photo.data), (c) => c.charCodeAt(0));
         data.photo_path = await savePhoto(data.id, bin, p.photo.mime);
@@ -374,12 +406,16 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
     }
 
     case "save": {
-      must(isStaff(u), "Рішення записують комунікаційники");
+      const { data: c } = await scope(db.from("complaints").select("id,location_id,channel,resolved_at"), u).eq("id", Number(p.id)).maybeSingle();
+      must(c, "Скаргу не знайдено");
+      must(canSolve(u, c!), "Цю скаргу закриває інша людина");
       const solution = String(p.solution ?? "").trim();
       must(solution && RESULTS.includes(p.result), "Запишіть рішення і виберіть результат");
+      // Editing an old solution keeps the day it was first resolved, so the solve time stays true.
       const { data, error } = await db.from("complaints").update({
-        solution, result: p.result, who: String(p.who ?? ""), updated_at: new Date().toISOString(), resolved_at: new Date().toISOString(),
-      }).eq("id", p.id).select().single();
+        solution, result: p.result, who: isStaff(u) ? String(p.who ?? "") : u.name, updated_at: new Date().toISOString(),
+        resolved_at: c!.resolved_at ?? new Date().toISOString(),
+      }).eq("id", c!.id).select().single();
       must(!error, "Не вдалося зберегти");
       return data;
     }
@@ -459,10 +495,22 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
       const [from] = monthRange(p.month);
       const rows = Object.entries(p.values ?? {})
         .filter(([, v]) => v !== "" && v !== null && Number(v) >= 0)
-        .map(([id, v]) => ({ location_id: Number(id), month: from, checks: Math.round(Number(v)) }));
+        .map(([id, v]) => ({ location_id: Number(id), month: from, checks: Math.round(Number(v)), manual: true }));
+      // Typed by hand wins over Poster: Poster no longer overwrites these (owner 2026-11-02). An emptied field goes back to Poster.
       if (rows.length) await db.from("checks_monthly").upsert(rows);
+      const cleared = (Array.isArray(p.cleared) ? p.cleared : []).map(Number).filter(Boolean);
+      if (cleared.length) await db.from("checks_monthly").update({ manual: false }).eq("month", from).in("location_id", cleared);
       return { ok: true };
     }
+    // Answers to «Були нові скарги?» for the last 3 days (owner 2026-11-02).
+    case "checkins": {
+      must(u.role === "admin", "Немає доступу");
+      const { data } = await db.from("checkins").select("tg_id,slot,sent_at,answer,answered_at").gte("sent_at", new Date(Date.now() - 3 * 86400000).toISOString()).order("sent_at", { ascending: false });
+      const ids = [...new Set((data ?? []).map((r) => r.tg_id))];
+      const { data: who } = ids.length ? await db.from("users").select("tg_id,name,role").in("tg_id", ids) : { data: [] };
+      return { rows: data ?? [], people: who ?? [] };
+    }
+
     case "loc_save": {
       must(u.role === "admin", "Немає доступу");
       const name = String(p.name ?? "").trim();

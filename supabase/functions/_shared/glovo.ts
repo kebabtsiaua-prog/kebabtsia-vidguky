@@ -96,6 +96,16 @@ export async function importGlovo(text: string): Promise<ImportResult> {
     res.fresh++;
     if (hasComment(body)) texts.push({ order, day, body, loc });
   }
+  // Reviews kept earlier from a store we did not know yet: once the store is tied to a location, they get it now and
+  // their negative ones become complaints, instead of being lost (audit 2026-11-01). Only the last 14 days.
+  const { data: orphans } = await db.from("glovo_reviews").select("order_id,store_id,rated_on,text").is("location_id", null)
+    .gte("rated_on", new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10));
+  for (const o of orphans ?? []) {
+    const loc = byStore.get(o.store_id);
+    if (!loc || texts.some((x) => x.order === o.order_id)) continue;
+    await db.from("glovo_reviews").update({ location_id: loc.id }).eq("order_id", o.order_id);
+    if (hasComment(o.text ?? "")) texts.push({ order: o.order_id, day: o.rated_on, body: o.text.trim(), loc });
+  }
   // Only negative reviews become complaints (owner 2026-10-30); the AI reads the texts, the stars are always 0.
   res.withText = texts.length;
   const verdicts = await negativeReviews(texts.map((x) => x.body));

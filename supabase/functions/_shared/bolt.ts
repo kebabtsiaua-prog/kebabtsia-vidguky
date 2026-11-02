@@ -7,8 +7,10 @@ import { alertTake } from "./glovo.ts";
 export type BoltRow = { id: string; rating: number | null; at: string; tags: string[]; text: string };
 export type BoltResult = { store: string; known: boolean; rows: number; fresh: number; withText: number; complaints: { id: number; loc: string }[] };
 
-// The first read brings the page's whole month; older reviews are only stored, so nobody gets alerts about October 1st.
-const FRESH_DAYS = 2;
+// The first read of a store brings the page's whole month; older reviews are only stored, so nobody gets alerts about
+// October 1st. After that a review up to two weeks old still becomes a complaint, so a few days without the page open
+// lose nothing (audit 2026-11-01).
+const FIRST_DAYS = 2, LATER_DAYS = 14;
 
 // «29.10.2026 18:14» on the page is Kyiv time.
 export function kyivTime(s: string): string | null {
@@ -26,6 +28,18 @@ export async function importBolt(store: string, rows: BoltRow[]): Promise<BoltRe
   const loc = locId ? (await activeLocations()).find((l) => l.id === locId) : undefined;
   const res: BoltResult = { store: name, known: !!loc, rows: rows.length, fresh: 0, withText: 0, complaints: [] };
   const texts: { key: string; at: string; body: string; rating: number | null }[] = [];
+  const { count: seen } = await db.from("bolt_reviews").select("id", { count: "exact", head: true }).eq("store", name).not("location_id", "is", null);
+  const window = (seen ? LATER_DAYS : FIRST_DAYS) * 86400000;
+  // Rows kept while the store was unknown: now that it is tied to a location, they get it and are read again.
+  if (loc) {
+    const { data: orphans } = await db.from("bolt_reviews").select("id,rated_at,text,rating").eq("store", name).is("location_id", null);
+    for (const o of orphans ?? []) {
+      await db.from("bolt_reviews").update({ location_id: loc.id }).eq("id", o.id);
+      if (hasComment(o.text ?? "") && Date.now() - Date.parse(o.rated_at) < LATER_DAYS * 86400000) {
+        texts.push({ key: o.id, at: o.rated_at, body: o.text.trim(), rating: o.rating });
+      }
+    }
+  }
   for (const r of rows) {
     const at = kyivTime(r.at);
     if (!r.id || !at) continue;
@@ -37,7 +51,7 @@ export async function importBolt(store: string, rows: BoltRow[]): Promise<BoltRe
     }, { onConflict: "id", ignoreDuplicates: true }).select("id");
     if (!ins?.length) continue;
     res.fresh++;
-    if (hasComment(body) && Date.now() - Date.parse(at) < FRESH_DAYS * 86400000) texts.push({ key, at, body, rating: Number.isInteger(r.rating) ? r.rating : null });
+    if (hasComment(body) && Date.now() - Date.parse(at) < window) texts.push({ key, at, body, rating: Number.isInteger(r.rating) ? r.rating : null });
   }
   res.withText = texts.length;
   if (!loc) return res;

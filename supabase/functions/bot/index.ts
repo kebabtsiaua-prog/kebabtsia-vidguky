@@ -5,9 +5,10 @@ import { syncSheet } from "../_shared/sheet.ts";
 import { b64, parseComplaint } from "../_shared/ai.ts";
 import { listChats, onGroupMessage, onMembership } from "../_shared/uployal.ts";
 import {
-  activeLocations, APP_URL, bootstrapAdmin, channelsFor, db, getUser, glovoKey, itemUrl, kyivToday, type Location, ownLocations, redeemCode, ROLES,
-  savePhoto, tabUrl, tg, tgFile, type User, webhookSecret,
+  activeLocations, APP_URL, bootstrapAdmin, channelsFor, db, getUser, glovoKey, itemUrl, kyivToday, LATE_DAYS, type Location, LOW_RATING, ownLocations,
+  redeemCode, ROLES, savePhoto, tabUrl, tg, tgFile, type User, waitedDays, webhookSecret,
 } from "../_shared/common.ts";
+import { answerNone, checkinAdded, notifyNew, ownReminders, sendCheckins } from "../_shared/remind.ts";
 import { recipients } from "../_shared/uployal.ts";
 import { type BoltRow, importBolt } from "../_shared/bolt.ts";
 import { alertTake, dailyReport, type ImportResult, importGlovo, isGlovoReport, remindGlovo, take, takeButtonFor } from "../_shared/glovo.ts";
@@ -100,7 +101,7 @@ function glovoSummary(r: ImportResult, via = "") {
     } else lines.push("", "Нових скарг немає.");
     if (r.existing) lines.push(`Уже були в апці раніше: ${r.existing}.`);
   }
-  if (r.unknown.length) lines.push("", `⚠️ Не знайшов точку для: ${r.unknown.map(esc).join("; ")}. Їхні скарги не додано, напишіть розробнику.`);
+  if (r.unknown.length) lines.push("", `⚠️ Не знайшов точку для: ${r.unknown.map(esc).join("; ")}. Відгуки збережено: щойно скажете, яка це точка, їхні скарги додадуться самі.`);
   return { text: lines.join("\n"), reply_markup: { inline_keyboard: [[{ text: "Відкрити чергу", web_app: { url: tabUrl("queue") } }]] } };
 }
 
@@ -268,6 +269,10 @@ async function onCallback(cb: any) {
     await tg("editMessageText", { chat_id: chat, message_id: msgId, text: `🚫 Доступ прибрано: ${x?.name ?? ""}. Ця людина більше не бачить апку.` });
     return;
   }
+  if (kind === "nn") {
+    await tg("answerCallbackQuery", { callback_query_id: cb.id, text: await answerNone(u.tg_id, idStr) });
+    return;
+  }
   if (kind === "tk") {
     const note = await take(id, u);
     await tg("answerCallbackQuery", { callback_query_id: cb.id, text: note });
@@ -346,11 +351,12 @@ async function onCallback(cb: any) {
       reply_markup: d.ch === "Glovo" || d.ch === "Bolt" ? await takeButtonFor(row.id)
         : { inline_keyboard: [[{ text: "Відкрити скаргу", web_app: { url: itemUrl(row.id) } }]] },
     });
+    await checkinAdded(u.tg_id).catch(console.error);
     // Glovo and Bolt: the location's other admins hear about it at once (owner 2026-10-27, 2026-10-30).
     if (d.ch === "Glovo" || d.ch === "Bolt") {
       await db.from("complaint_alerts").upsert({ complaint_id: row.id, chat_id: chat, message_id: msgId });
       await alertTake(row.id, u.tg_id);
-    }
+    } else await notifyNew(row.id, u.tg_id).catch(console.error); // everything else: Аня and Олена (owner 2026-11-02)
   }
   await tg("answerCallbackQuery", { callback_query_id: cb.id });
 }
@@ -398,11 +404,12 @@ async function morningReport(today: string): Promise<number> {
   const { data: recent } = await db.from("complaints").select("resolved_at").gte("resolved_at", `${day(2)}T00:00:00Z`);
   const kyivDay = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Kyiv" }).format(new Date(iso));
   const solved = (recent ?? []).filter((c) => kyivDay(c.resolved_at) === y).length;
-  const { data: openAll } = await db.from("complaints").select("location_id,happened_on").eq("result", "");
+  const { data: openAll } = await db.from("complaints").select("location_id,happened_on,created_at,source").eq("result", "");
   const open = (openAll ?? []).filter((c) => locs.some((l) => l.id === c.location_id));
-  const late = open.filter((c) => c.happened_on <= day(3)).length;
+  // Same rule as the app: days from when the complaint reached the app, red from LATE_DAYS.
+  const late = open.filter((c) => waitedDays(c, today) >= LATE_DAYS).length;
   const { data: rates } = await db.from("app_ratings").select("rating").eq("rated_on", y);
-  const { data: snaps } = await db.from("google_daily").select("location_id,day,rating").gte("day", day(2)).order("day", { ascending: false });
+  const { data: snaps } = await db.from("google_daily").select("location_id,day,rating,count").gte("day", day(2)).order("day", { ascending: false });
   const month = y.slice(0, 8) + "01", prev = new Date(Date.parse(month) - DAY).toISOString().slice(0, 8) + "01";
   const prevSame = new Date(Date.parse(prev) + (Date.parse(y) - Date.parse(month))).toISOString().slice(0, 10);
   const { count: mtd } = await db.from("complaints").select("id", { count: "exact", head: true }).gte("happened_on", month).lte("happened_on", y);
@@ -413,16 +420,17 @@ async function morningReport(today: string): Promise<number> {
   lines.push(f.length ? `Нових скарг: <b>${f.length}</b> (${top(f.map((c) => c.channel), 4)})` : "Нових скарг: <b>0</b>");
   if (f.length) lines.push(`Найбільше: ${top(f.map((c) => name(c.location_id)), 3)}`);
   lines.push(`Вирішено за вчора: <b>${solved}</b>`);
-  lines.push(`Чекають рішення: <b>${open.length}</b>${late ? `, з них довше 3 днів: <b>${late}</b>` : ""}`);
+  lines.push(`Чекають рішення: <b>${open.length}</b>${late ? `, з них ${LATE_DAYS}+ днів: <b>${late}</b>` : ""}`);
   const r = (rates ?? []).map((x) => x.rating);
   if (r.length) {
-    const low = r.filter((x) => x <= 2).length;
-    lines.push(`Оцінки в додатку: ${r.length}, середня <b>${ua(r.reduce((a, b) => a + b, 0) / r.length)}</b>${low ? `, низьких (1–2★): ${low}` : ""}`);
+    const low = r.filter((x) => x <= LOW_RATING).length;
+    lines.push(`Оцінки в додатку: ${r.length}, середня <b>${ua(r.reduce((a, b) => a + b, 0) / r.length)}</b>${low ? `, низьких (1–${LOW_RATING}★): ${low}` : ""}`);
   }
-  const g = (d: string) => (snaps ?? []).filter((s) => s.day === d && s.rating != null).map((s) => Number(s.rating));
+  // The network's Google rating weighted by each location's number of reviews, as Google itself would count it.
+  const g = (d: string) => (snaps ?? []).filter((s) => s.day === d && s.rating != null).map((s) => ({ r: Number(s.rating), n: Number(s.count) || 1 }));
   const gNow = g(today).length ? g(today) : g(y), gThen = g(today).length ? g(y) : g(day(2));
   if (gNow.length) {
-    const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+    const avg = (xs: { r: number; n: number }[]) => xs.reduce((a, x) => a + x.r * x.n, 0) / xs.reduce((a, x) => a + x.n, 0);
     const diff = gThen.length ? avg(gNow) - avg(gThen) : 0;
     lines.push(`Google, середній по мережі: <b>${ua(avg(gNow), 2)}</b>${Math.abs(diff) >= 0.005 ? ` (${diff > 0 ? "+" : "−"}${ua(Math.abs(diff), 2)} за добу)` : ""}`);
   }
@@ -446,18 +454,16 @@ async function digest(): Promise<Record<string, unknown>> {
   const reminded = await surveyReminders(today);
   const reported = await morningReport(today).catch((e) => (console.error(e), 0));
   const glovo = await dailyReport(today).catch((e) => (console.error(e), 0));
+  const own = await ownReminders(today).catch((e) => (console.error(e), 0));
   await syncSheet().catch(console.error);
   const { error: dup } = await db.from("bot_digests").insert({ day: today });
-  if (dup) return { ok: true, sent: 0, reminded, reported, glovo, reason: "already sent today" };
+  if (dup) return { ok: true, sent: 0, reminded, reported, glovo, own, reason: "already sent today" };
   const locs = await activeLocations();
   const name = (id: number) => (locs.find((l) => l.id === id)?.name ?? "").replace(/^Львів, /, "");
   const { data: open } = await db.from("complaints").select("id,location_id,channel,happened_on,created_at,source").eq("result", "");
-  const waited = (c: { happened_on: string; created_at: string; source: string }) => {
-    const from = c.source === "sheet" ? c.happened_on : c.created_at.slice(0, 10) > c.happened_on ? c.created_at.slice(0, 10) : c.happened_on;
-    return Math.round((Date.parse(today) - Date.parse(from)) / DAY);
-  };
-  const all = (open ?? []).filter((c) => locs.some((l) => l.id === c.location_id)).map((c) => ({ ...c, days: waited(c) })).sort((a, b) => b.days - a.days);
+  const all = (open ?? []).filter((c) => locs.some((l) => l.id === c.location_id)).map((c) => ({ ...c, days: waitedDays(c, today) })).sort((a, b) => b.days - a.days);
   const old = all.filter((c) => c.days >= 1);
+  const late = all.filter((c) => c.days >= LATE_DAYS).length;
   // Google: the two latest daily snapshots per location
   const { data: snaps } = await db.from("google_daily").select("location_id,day,rating").gte("day", new Date(Date.parse(today) - 3 * DAY).toISOString().slice(0, 10))
     .order("day", { ascending: false });
@@ -466,10 +472,10 @@ async function digest(): Promise<Record<string, unknown>> {
     const s = (snaps ?? []).filter((x) => x.location_id === l.id && x.rating != null);
     if (s.length >= 2 && Number(s[0].rating) < Number(s[1].rating)) drops.push(`${esc(name(l.id))} ${String(s[1].rating).replace(".", ",")} → ${String(s[0].rating).replace(".", ",")}`);
   }
-  if (!old.length && !drops.length) return { ok: true, sent: 0, reminded, reported, glovo, reason: "nothing to report" };
+  if (!old.length && !drops.length) return { ok: true, sent: 0, reminded, reported, glovo, own, reason: "nothing to report" };
   const lines = ["☀️ <b>Ранкова зведенка</b>", ""];
-  if (all.length) lines.push(`Чекають рішення: <b>${all.length}</b>${old.length ? `, з них довше доби: <b>${old.length}</b>` : ""}`);
-  for (const c of old.slice(0, 8)) lines.push(`· ${esc(name(c.location_id))}, ${esc(c.channel)} · ${c.days} дн`);
+  if (all.length) lines.push(`Чекають рішення: <b>${all.length}</b>${old.length ? `, з них від доби: <b>${old.length}</b>` : ""}${late ? `, ${LATE_DAYS}+ днів: <b>${late}</b>` : ""}`);
+  for (const c of old.slice(0, 8)) lines.push(`${c.days >= LATE_DAYS ? "🔴" : "🟡"} ${esc(name(c.location_id))}, ${esc(c.channel)} · ${c.days} дн`);
   if (old.length > 8) lines.push(`· і ще ${old.length - 8}`);
   if (drops.length) lines.push("", `Google за добу впав: ${drops.slice(0, 6).join("; ")}${drops.length > 6 ? ` і ще ${drops.length - 6}` : ""}`);
   let sent = 0;
@@ -480,7 +486,7 @@ async function digest(): Promise<Record<string, unknown>> {
     }).catch(console.error);
     if (r?.ok) sent++;
   }
-  return { ok: true, sent, reminded, reported, glovo, waiting: all.length, older: old.length, drops: drops.length };
+  return { ok: true, sent, reminded, reported, glovo, own, waiting: all.length, older: old.length, drops: drops.length };
 }
 
 // GET ?announce=KEY, called by the deploy workflow: a one-off message to one person, found by first name.
@@ -584,7 +590,7 @@ async function boltUpload(req: Request): Promise<Response> {
   const r = await importBolt(store, rows);
   if (r.complaints.length || (!r.known && r.fresh)) {
     const lines = [`🟢 <b>Відгуки Bolt · ${esc(r.store)}</b>`, "🧩 Розширення Chrome прочитало сторінку Bolt.", ""];
-    if (!r.known) lines.push(`⚠️ Не знаю, яка це точка: «${esc(r.store)}». Скарги не додано, напишіть розробнику.`);
+    if (!r.known) lines.push(`⚠️ Не знаю, яка це точка: «${esc(r.store)}». Відгуки збережено: щойно скажете, яка це точка, скарги додадуться самі.`);
     else {
       lines.push(`Нових відгуків: <b>${r.fresh}</b>. Нові скарги (${r.complaints.length}):`);
       for (const c of r.complaints) lines.push(`· №${c.id} ${esc(c.loc)}`);
@@ -603,6 +609,7 @@ Deno.serve(async (req) => {
       if (new URL(req.url).searchParams.has("chats")) return Response.json(await listChats());
       if (new URL(req.url).searchParams.has("digest")) return Response.json(await digest());
       if (new URL(req.url).searchParams.has("sheet")) return Response.json(await syncSheet());
+      if (new URL(req.url).searchParams.has("checkin")) return Response.json(await sendCheckins());
       if (new URL(req.url).searchParams.has("glovo")) return Response.json(await remindGlovo(kyivToday()));
       if (new URL(req.url).searchParams.has("report")) return Response.json({ ok: true, reported: await morningReport(kyivToday()) });
       const key = new URL(req.url).searchParams.get("announce");

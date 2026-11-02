@@ -1,0 +1,19 @@
+# «Були нові скарги?» three times a day to the operators and to Аня and Олена (owner 2026-11-02),
+# with the buttons [Немає] and [Додати]. 10, 14 and 18 UTC = 12:00, 16:00 and 20:00 in Kyiv in winter.
+# The bot asks each person once per slot; the answers are in the app, «Налаштування → Були нові скарги?».
+name: Питання «Були нові скарги?»
+
+on:
+  schedule:
+    - cron: "0 10,14,18 * * *"
+  workflow_dispatch:
+
+jobs:
+  ask:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          ref="obpmsgxanigythxkvrmh"
+          out=$(curl -sS "https://$ref.supabase.co/functions/v1/bot?checkin=1")
+          echo "$out"
+          echo "::notice title=Checkin::$out"

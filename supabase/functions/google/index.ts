@@ -23,13 +23,16 @@ async function places(key: string, path: string, mask: string, body?: unknown) {
   return data;
 }
 
+// Our own pages are named «Кебабця» / «Kebabtsia». A loose «кебаб» once matched a competitor for Хуторівка
+// (owner 2026-11-02), so only the chain's own name counts.
+const OURS = /кебабц|kebabts|kebabc/i;
 // The chain's place for a location, found by name. Only a result named «Кебабця…» and not taken by another location counts.
 async function findPlace(key: string, l: Loc, taken: Set<string>) {
   const data = await places(key, "places:searchText", "places.id,places.displayName,places.formattedAddress", {
     textQuery: l.google_query || `Кебабця ${l.name}`, languageCode: "uk", regionCode: "UA",
   });
   const p = (data.places ?? []).find((x: { id: string; displayName?: { text?: string } }) =>
-    /кебаб|kebab/i.test(x.displayName?.text ?? "") && !taken.has(x.id)
+    OURS.test(x.displayName?.text ?? "") && !taken.has(x.id)
   );
   if (!p) return null;
   await db.from("locations").update({ google_place_id: p.id, google_address: p.formattedAddress ?? null }).eq("id", l.id);
@@ -63,7 +66,8 @@ async function fillMonth(month: string, locs: Loc[]) {
       start_rating: old?.start_rating ?? base.rating,
       end_rating: last.rating,
       total: last.count,
-      new_reviews: last.count! - base.count!,
+      // Never below zero: a first snapshot from another listing must not count as lost reviews.
+      new_reviews: Math.max(0, last.count! - base.count!),
     });
   }
   if (out.length) {
@@ -186,7 +190,13 @@ Deno.serve(async (req) => {
         errors.push(`${l.name}: не знайдено в Google`);
         continue;
       }
-      const p = await places(key, `places/${id}?languageCode=uk`, "rating,userRatingCount,reviews");
+      const p = await places(key, `places/${id}?languageCode=uk`, "displayName,rating,userRatingCount,reviews");
+      // A page that is not ours (a competitor matched earlier): forget it and search again by the chain's name next time.
+      if (!OURS.test(p.displayName?.text ?? "")) {
+        await db.from("locations").update({ google_place_id: null, google_address: null }).eq("id", l.id);
+        errors.push(`${l.name}: сторінка «${p.displayName?.text ?? "?"}» не наша, прибрано`);
+        continue;
+      }
       const { error } = await db.from("google_daily").upsert({
         location_id: l.id, day: today, rating: p.rating ?? null, count: p.userRatingCount ?? 0,
       });
