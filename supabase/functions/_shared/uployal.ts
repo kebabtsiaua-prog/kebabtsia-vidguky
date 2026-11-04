@@ -59,6 +59,8 @@ export function matchLocation(text: string, locs: Loc[]): number | null {
   return scored[0].id;
 }
 
+// «+38(063)843-70-57» → «+380638437057», so it pastes cleanly into a dialer, Viber or a chat.
+const plainPhone = (p: string) => /\d{9}/.test(p.replace(/\D/g, "")) ? (p.trim().startsWith("+") ? "+" : "") + p.replace(/\D/g, "") : p.trim();
 const fmt = (iso: string) => iso.split("-").reverse().join(".");
 function escH(s: string) {
   return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
@@ -117,7 +119,9 @@ export async function onGroupMessage(msg: any) {
     "",
     `<b>Точка:</b> ${escH(loc.name)}`,
   ];
-  if (r.guest || r.phone) lines.push(`<b>Гість:</b> ${escH([r.guest, r.phone].filter(Boolean).join(", "))}`);
+  if (r.guest) lines.push(`<b>Гість:</b> ${escH(r.guest)}`);
+  // Monospace, so one tap copies it: as a link Telegram looks the number up and says it isn't registered (owner, 2026-11-04).
+  if (r.phone) lines.push(`<b>Телефон:</b> <code>${escH(plainPhone(r.phone))}</code>`);
   if (r.order) lines.push(`<b>Замовлення:</b> ${escH(r.order)}`);
   lines.push(`<blockquote>${escH(r.comment)}</blockquote>`, "<i>Зв'яжіться з гостем. Рішення запишіть в апці.</i>");
   for (const u of await recipients()) {
