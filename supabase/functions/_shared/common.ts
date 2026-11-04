@@ -245,3 +245,17 @@ export async function savePhoto(complaintId: number, bytes: Uint8Array, mime: st
   await db.from("complaints").update({ photo_path: path }).eq("id", complaintId);
   return path;
 }
+
+// Several screenshots of one complaint, in the order they were added: 12.jpg, 12-2.jpg … 12-6.jpg.
+export async function savePhotos(complaintId: number, photos: { bytes: Uint8Array; mime: string }[]): Promise<string[]> {
+  const paths: string[] = [];
+  for (const [i, p] of photos.entries()) {
+    const ext = p.mime === "image/png" ? "png" : p.mime === "image/webp" ? "webp" : "jpg";
+    const path = `${complaintId}${i ? `-${i + 1}` : ""}.${ext}`;
+    const { error } = await db.storage.from("photos").upload(path, p.bytes, { contentType: p.mime, upsert: true });
+    if (error) console.error("photo upload", error.message);
+    else paths.push(path);
+  }
+  if (paths.length) await db.from("complaints").update({ photo_path: paths[0], photo_paths: paths }).eq("id", complaintId);
+  return paths;
+}

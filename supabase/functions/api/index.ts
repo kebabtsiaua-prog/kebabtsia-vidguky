@@ -4,7 +4,7 @@ import * as XLSX from "npm:xlsx@0.18.5";
 import { parseComplaint } from "../_shared/ai.ts";
 import {
   activeLocations, APP_URL, bootstrapAdmin, channelsFor, CHANNELS, db, esc, getUser, keywordTopics, kyivToday, newCode, ownLocations, redeemCode,
-  RESULTS, ROLES, savePhoto, telegramUser, tg, TOPICS, type User,
+  RESULTS, ROLES, savePhotos, telegramUser, tg, TOPICS, type User,
 } from "../_shared/common.ts";
 import { FEEDBACK_KB, followUp, inviteText, locked, MIN, ownerId, SETS, setOf, type SurveyUser } from "../_shared/survey.ts";
 
@@ -21,6 +21,15 @@ const must = (ok: unknown, msg: string) => {
   if (!ok) throw new Fail(msg);
 };
 const isStaff = (u: User) => u.role === "admin" || u.role === "comms";
+
+// Screenshots sent by the app: up to 6 per complaint (a long chat takes several). Older app versions send one as `photo`.
+const MAX_PHOTOS = 6;
+// deno-lint-ignore no-explicit-any
+function photosIn(p: any): { data: string; mime: string }[] {
+  const list = Array.isArray(p.photos) ? p.photos : p.photo ? [p.photo] : [];
+  return list.filter((x: { data?: unknown }) => x && typeof x.data === "string" && x.data)
+    .slice(0, MAX_PHOTOS).map((x: { data: string; mime?: string }) => ({ data: x.data, mime: String(x.mime || "image/jpeg") }));
+}
 
 function monthRange(month: string): [string, string] {
   must(/^\d{4}-\d{2}$/.test(month), "Невірний місяць");
@@ -53,7 +62,7 @@ async function monthData(u: User, month: string) {
   const [, to] = monthRange(month);
   const [sixFrom] = monthRange(shiftMonth(month, -5));
   const locations = await activeLocations();
-  const cols = "id,location_id,channel,happened_on,text,topics,solution,result,who,photo_path,rating,source,created_by,created_at,resolved_at,taken_by,taken_at";
+  const cols = "id,location_id,channel,happened_on,text,topics,solution,result,who,photo_path,photo_paths,rating,source,created_by,created_at,resolved_at,taken_by,taken_at";
   const { data: items } = await scope(db.from("complaints").select(cols), u)
     .gte("happened_on", from).lt("happened_on", to).order("happened_on", { ascending: false }).order("id", { ascending: false });
   const { data: hist } = await scope(db.from("complaints").select("location_id,happened_on"), u)
@@ -331,16 +340,16 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
       return monthData(u, p.month);
 
     case "photo": {
-      const { data: c } = await scope(db.from("complaints").select("photo_path"), u).eq("id", p.id).maybeSingle();
+      const { data: c } = await scope(db.from("complaints").select("photo_path,photo_paths"), u).eq("id", p.id).maybeSingle();
       must(c?.photo_path, "Фото немає");
-      const { data } = await db.storage.from("photos").createSignedUrl(c!.photo_path, 600);
-      return { url: data?.signedUrl };
+      const paths: string[] = c!.photo_paths?.length ? c!.photo_paths : [c!.photo_path];
+      const { data } = await db.storage.from("photos").createSignedUrls(paths, 600);
+      const urls = (data ?? []).map((x) => x.signedUrl).filter(Boolean);
+      return { url: urls[0], urls };
     }
 
-    case "parse": {
-      const image = p.photo ? { data: String(p.photo.data), mime: String(p.photo.mime) } : undefined;
-      return parseComplaint(await activeLocations(), { text: p.text, image });
-    }
+    case "parse":
+      return parseComplaint(await activeLocations(), { text: p.text, images: photosIn(p) });
 
     case "add": {
       const own = ownLocations(u);
@@ -366,9 +375,11 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
       };
       const { data, error } = await db.from("complaints").insert(row).select().single();
       must(!error, "Не вдалося зберегти");
-      if (p.photo?.data) {
-        const bin = Uint8Array.from(atob(p.photo.data), (c) => c.charCodeAt(0));
-        data.photo_path = await savePhoto(data.id, bin, p.photo.mime);
+      const photos = photosIn(p);
+      if (photos.length) {
+        const paths = await savePhotos(data.id, photos.map((x) => ({ bytes: Uint8Array.from(atob(x.data), (c) => c.charCodeAt(0)), mime: x.mime })));
+        data.photo_path = paths[0] ?? null;
+        data.photo_paths = paths;
       }
       return data;
     }

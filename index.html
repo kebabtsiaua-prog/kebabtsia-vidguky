@@ -270,6 +270,7 @@ td .what{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;ov
 .quote{background:var(--card2);border-radius:12px;padding:11px 13px;font-size:13.5px;line-height:1.45;color:var(--fg);white-space:pre-wrap;overflow-wrap:anywhere}
 .photo-b{display:flex;gap:10px;align-items:center;margin-top:8px;font-size:12.5px;color:var(--hint)}
 .photo-b img{width:100%;border-radius:12px;display:block}
+.phs{display:flex;flex-direction:column;gap:8px;width:100%}
 .thumb{width:44px;height:58px;border-radius:8px;background:var(--acc-soft);color:var(--acc-fg);display:grid;place-items:center;flex:none;overflow:hidden}
 .thumb img{width:100%;height:100%;object-fit:cover}
 textarea,.inp{width:100%;border:1px solid var(--line);border-radius:12px;padding:10px 12px;font:inherit;font-size:14px;line-height:1.45;color:var(--fg);background:var(--card)}
@@ -299,6 +300,24 @@ textarea:focus,.inp:focus{outline:0;border-color:var(--acc);box-shadow:0 0 0 3px
 .drop .tx{flex:1;min-width:0}
 .drop b{display:block;font-size:13.5px}
 .drop span{font-size:12.5px;color:var(--fg2)}
+button.drop{width:100%;text-align:left}
+.drop.on{display:block;cursor:default;padding:10px}
+.shots{display:flex;flex-wrap:wrap;gap:8px}
+.shot{position:relative;width:52px;height:68px;border-radius:9px;overflow:hidden;background:var(--card);flex:none}
+.shot img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+.shot i{position:absolute;left:4px;bottom:4px;min-width:16px;height:16px;border-radius:8px;background:rgba(0,0,0,.6);color:#fff;font-size:10.5px;font-weight:600;line-height:16px;font-style:normal;text-align:center;padding:0 4px}
+.shot button{position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;display:grid;place-items:center}
+.shot button .i{width:12px;height:12px;stroke-width:2.6}
+.shot.add{border:1.5px dashed var(--acc);background:transparent;color:var(--acc-fg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+.shot.add .i{width:18px;height:18px}
+.shot.add small{font-size:10.5px;font-weight:600}
+.drop-s{display:flex;align-items:center;gap:8px;margin-top:8px;min-height:18px}
+.drop-s:empty{display:none}
+.drop-s span{font-size:12.5px;color:var(--fg2)}
+.drop-s .ai{color:var(--acc-fg)}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--acc-soft);border-top-color:var(--acc);animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.4s}}
 .ai{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;font-weight:600;color:var(--acc-fg);white-space:nowrap}
 .ai .i{width:15px;height:15px}
 .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -625,7 +644,7 @@ function ingest(){
   WHO=D.who||[];PEOPLE=D.people||{};
   items=D.items.filter(function(r){return LOCNAME[r.location_id]}).map(function(r){var mk=r.happened_on.slice(0,7);
     return {id:r.id,m:MK.indexOf(mk),day:+r.happened_on.slice(8,10),loc:LOCNAME[r.location_id],ch:r.channel,text:r.text,themes:r.topics||[],result:r.result,solution:r.solution,who:r.who,
-      photo:r.photo_path,rating:r.rating,date:r.happened_on,source:r.source,by:r.created_by,created:r.created_at,resolved:r.resolved_at,takenBy:r.taken_by,taken:r.taken_at}});
+      photo:r.photo_path,nph:(r.photo_paths&&r.photo_paths.length)||(r.photo_path?1:0),rating:r.rating,date:r.happened_on,source:r.source,by:r.created_by,created:r.created_at,resolved:r.resolved_at,takenBy:r.taken_by,taken:r.taken_at}});
   G={};D.google.forEach(function(g){var n=LOCNAME[g.location_id];if(!n)return;var i=MK.indexOf(String(g.month).slice(0,7));if(i<0)return;
     (G[n]=G[n]||[])[i]={total:g.total,nw:g.new_reviews,pos:g.positive,neg:g.negative,start:numOr(g.start_rating),end:numOr(g.end_rating)}});
   CHK={};D.checks.forEach(function(c){var n=LOCNAME[c.location_id];if(!n)return;(CHK[n]=CHK[n]||{})[String(c.month).slice(0,7)]=c.checks});
@@ -960,7 +979,7 @@ function openItem(idn){
   body+='<div class="mini"><div><div class="l">Точка</div><b>'+esc(p.short)+'</b><div class="s">'+esc(locSub(r.loc))+'</div>'+(oneLoc()?"":'<button data-openloc="'+esc(r.loc)+'">Сторінка точки →</button>')+'</div>'+
     '<div><div class="l">Канал</div><b>'+cb(r.ch,1)+esc(r.ch)+'</b><div class="s">'+(r.rating?stars(r.rating)+' оцінка '+r.rating+' з 5':"відгук "+r.day+" "+GEN[mNum(r.date)])+'</div></div></div>';
   body+='<div><div class="lbl">Що написав гість</div><div class="quote">'+esc(r.text)+'</div>'+(r.themes.length?'<div class="tags" style="margin-top:8px">'+r.themes.map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join("")+'</div>':"")+
-    (r.photo?'<div class="photo-b" id="phBox"><span class="thumb">'+I("img")+'</span><button class="lk" id="phBtn">Показати фото</button></div>':"")+'</div>';
+    (r.photo?'<div class="photo-b" id="phBox"><span class="thumb">'+I("img")+'</span><button class="lk" id="phBtn">'+(r.nph>1?"Показати "+r.nph+" "+plural(r.nph,"скриншот","скриншоти","скриншотів"):"Показати фото")+'</button></div>':"")+'</div>';
   if(staff){
     body+='<div><div class="lbl">Рішення <span class="req">*</span></div><textarea id="sol" placeholder="Що зробили: подзвонили, повернули кошти, переглянули камери…">'+esc(r.solution)+'</textarea></div>';
     body+='<div><div class="lbl">Результат <span class="req">*</span></div><div class="opts" id="res">'+RESULTS.map(function(x){return '<button class="opt'+(st.result===x?" on":"")+'" data-v="'+esc(x)+'"><span class="rd"></span>'+esc(x)+'</button>'}).join("")+'</div></div>';
@@ -986,7 +1005,7 @@ function openItem(idn){
     if(pv)pv.addEventListener("click",function(){S.ctx=ctx;openItem(ctx[pos-1])});
     if(nx)nx.addEventListener("click",function(){S.ctx=ctx;openItem(ctx[pos+1])});
     var ol=el.querySelector("[data-openloc]");if(ol)ol.addEventListener("click",function(){closeAll();openCab(ol.dataset.openloc,S.loc?S.from:S.tab)});
-    var ph=el.querySelector("#phBtn");if(ph)ph.addEventListener("click",function(){busy(ph,true);api("photo",{id:r.id}).then(function(x){el.querySelector("#phBox").innerHTML='<img src="'+esc(x.url)+'" alt="Фото до скарги">'}).catch(function(e){busy(ph,false);toast(e.message)})});
+    var ph=el.querySelector("#phBtn");if(ph)ph.addEventListener("click",function(){busy(ph,true);api("photo",{id:r.id}).then(function(x){var u=x.urls&&x.urls.length?x.urls:[x.url];el.querySelector("#phBox").innerHTML='<div class="phs">'+u.map(function(v,i){return '<img src="'+esc(v)+'" alt="Фото до скарги'+(u.length>1?", "+(i+1)+" з "+u.length:"")+'">'}).join("")+'</div>'}).catch(function(e){busy(ph,false);toast(e.message)})});
     if(!staff)return;
     var sol=el.querySelector("#sol"),save=el.querySelector("#save"),hint=el.querySelector("#sHint");
     function check(){var ok=sol.value.trim()&&st.result;save.disabled=!ok;hint.textContent=ok?(open?"Після збереження скарга піде у «Вирішені»":""):"Запишіть рішення і виберіть результат"}
@@ -1006,15 +1025,15 @@ function shrink(file){ // phone screenshots are large; 1600px is enough to read 
 }
 function openAdd(preLoc){
   var fixedLoc=oneLoc()?LOCS[0]:null,chs=ME.channels;
-  var A={loc:fixedLoc||preLoc||null,ch:chs.length===1?chs[0]:null,photo:null,topics:null,date:ME.today,rating:null,ai:{}};
-  var body='<label class="drop" for="aPh"><span class="thumb" id="aPrev">'+I("img")+'</span><span class="tx"><b id="aDropT">Додайте скриншот або фото</b><span id="aDropS">ШІ прочитає його і заповнить поля сам</span></span><span class="ai" id="aAi" hidden></span><input type="file" id="aPh" accept="image/*"></label>'+
+  var A={loc:fixedLoc||preLoc||null,ch:chs.length===1?chs[0]:null,photos:[],topics:null,date:ME.today,rating:null,ai:{},seq:0};
+  var body='<div class="drops" id="aDrop"></div><input type="file" id="aPh" accept="image/*" multiple hidden>'+
     '<div class="fgrid">'+(fixedLoc?'<div><div class="lbl">Точка</div><div class="pick"><span>'+esc(shortLoc(fixedLoc))+'</span></div></div>':'<div><div class="lbl">Точка <span class="req">*</span></div><button class="pick'+(A.loc?"":" empty")+'" id="aLoc"><span>'+esc(A.loc?shortLoc(A.loc):"Вибрати точку")+'</span>'+I("down")+'</button></div>')+
     '<div><div class="lbl">Дата відгуку</div><input class="pick" type="date" id="aDate" value="'+A.date+'" max="'+ME.today+'"></div></div>'+
     '<div><div class="lbl">Канал <span class="req">*</span></div><div class="chs" id="aCh">'+chs.map(function(c){return '<button class="'+(A.ch===c?"on":"")+'" data-v="'+esc(c)+'">'+cb(c,1)+esc(c)+'</button>'}).join("")+'</div></div>'+
     '<div><div class="lbl">Суть проблеми <span class="req">*</span><span class="ai" id="aTxtAi" style="margin-left:auto" hidden>'+I("spark")+'зі скриншота</span></div><textarea id="aTxt" placeholder="Що сталося, як написав гість"></textarea><div class="tags" id="aTags"></div></div>'+
     (isStaff()?'<div><div class="lbl">Рішення <span class="opt-n">· можна пізніше</span></div><textarea id="aSol" style="min-height:60px" placeholder="Якщо вже вирішили"></textarea></div>':"");
   var foot='<span class="sp" id="aHint"></span><button class="btn2" data-close2>Скасувати</button><button class="btnk" id="aSave" disabled>Додати скаргу</button>';
-  openPanel({id:"Нова скарга",title:"Додайте скриншот, решту заповнить ШІ",body:body,foot:foot,mount:function(el){
+  openPanel({id:"Нова скарга",title:"Додайте скриншоти, решту заповнить ШІ",body:body,foot:foot,mount:function(el){
     var b=el,locB=b.querySelector("#aLoc"),txt=b.querySelector("#aTxt"),save=b.querySelector("#aSave"),hint=b.querySelector("#aHint"),dt=b.querySelector("#aDate");
     b.querySelector("[data-close2]").addEventListener("click",closePanel);
     function check(){var miss=[];if(!A.loc)miss.push("точку");if(!A.ch)miss.push("канал");if(!txt.value.trim())miss.push("суть проблеми");save.disabled=!!miss.length;
@@ -1025,23 +1044,46 @@ function openAdd(preLoc){
     b.querySelector("#aCh").addEventListener("click",function(e){var x=e.target.closest("[data-v]");if(x)setCh(x.dataset.v)});
     txt.addEventListener("input",function(){txt.classList.remove("ai-f");b.querySelector("#aTxtAi").hidden=true;delete A.ai.text;check()});
     dt.addEventListener("change",function(){A.date=dt.value||ME.today;dt.classList.remove("ai-f")});
-    b.querySelector("#aPh").addEventListener("change",function(e){var f=e.target.files&&e.target.files[0];if(!f)return;
-      b.querySelector("#aDropT").textContent=f.name||"Фото";b.querySelector("#aDropS").textContent="ШІ читає скриншот…";
-      shrink(f).then(function(p){A.photo={data:p.data,mime:p.mime};
-        b.querySelector("#aPrev").innerHTML='<img src="'+p.preview+'" alt="Додане фото">';
-        return api("parse",{photo:A.photo,text:txt.value}).then(function(x){var n=0;
-          if(x.text&&!txt.value.trim()){txt.value=x.text;txt.classList.add("ai-f");b.querySelector("#aTxtAi").hidden=false;A.ai.text=1;n++}
-          if(!fixedLoc&&x.location_id&&LOCNAME[x.location_id]&&!A.loc){setLoc(LOCNAME[x.location_id],1);n++}
-          if(x.channel&&chs.indexOf(x.channel)>=0&&!A.ch){setCh(x.channel,1);n++}
-          if(x.date&&/^\d{4}-\d{2}-\d{2}$/.test(x.date)&&x.date<=ME.today){A.date=x.date;dt.value=x.date;dt.classList.add("ai-f");n++}
-          A.topics=x.topics;A.rating=x.rating;
-          b.querySelector("#aTags").innerHTML=(x.topics||[]).map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join("")+(x.rating?'<span class="tag">'+"★".repeat(x.rating)+'</span>':"");
-          b.querySelector("#aDropS").textContent=n?"Скриншот прочитано, перевірте поля":"Не вдалося нічого прочитати, заповніть поля вручну";
-          var ai=b.querySelector("#aAi");ai.hidden=!n;ai.innerHTML=I("spark")+n+" "+plural(n,"поле","поля","полів");check()});
-      }).catch(function(){b.querySelector("#aDropS").textContent="Не вдалося прочитати скриншот. Заповніть поля вручну, фото все одно збережеться."})});
+    // Up to 6 screenshots: a long chat does not fit on one. Every change sends all of them to the AI together,
+    // and only the fields the AI filled itself are updated; whatever the person typed or picked stays (2026-11-04).
+    var MAXPH=6,inp=b.querySelector("#aPh"),drop=b.querySelector("#aDrop"),st={t:"",ai:0};
+    function drawDrop(){var n=A.photos.length;
+      if(!n){drop.innerHTML='<button class="drop" data-shot-add><span class="thumb">'+I("img")+'</span><span class="tx"><b>Додайте скриншоти, до '+MAXPH+'</b><span>Довгу переписку додавайте по порядку. ШІ прочитає все разом</span></span></button>';return}
+      drop.innerHTML='<div class="drop on"><div class="shots">'+A.photos.map(function(p,i){return '<span class="shot"><img src="'+p.preview+'" alt="Скриншот '+(i+1)+'"><i>'+(i+1)+'</i><button data-shot-del="'+i+'" aria-label="Прибрати скриншот '+(i+1)+'">'+I("x")+'</button></span>'}).join("")+
+        (n<MAXPH?'<button class="shot add" data-shot-add aria-label="Додати ще скриншот">'+I("plus")+'<small>ще '+(MAXPH-n)+'</small></button>':"")+'</div>'+
+        '<div class="drop-s">'+(st.t==="busy"?'<span class="spin"></span>':st.ai?'<span class="ai">'+I("spark")+st.ai+" "+plural(st.ai,"поле","поля","полів")+'</span>':"")+'<span>'+esc(st.msg||"")+'</span></div></div>'}
+    function read(){var my=++A.seq,n=A.photos.length;
+      if(!n){applyAi({});st={};drawDrop();return}
+      st={t:"busy",msg:"ШІ читає "+(n>1?n+" "+plural(n,"скриншот","скриншоти","скриншотів")+" разом…":"скриншот…")};drawDrop();
+      api("parse",{photos:A.photos.map(function(p){return {data:p.data,mime:p.mime}}),text:A.ai.text?"":txt.value})
+        .then(function(x){if(my!==A.seq)return;var k=applyAi(x);
+          st={ai:k,msg:k?"Прочитано, перевірте підсвічені поля":Object.keys(A.ai).length||txt.value.trim()?"Нового для полів не знайшлось, перевірте їх самі":"Не вдалося нічого прочитати, заповніть поля вручну"};drawDrop();check()})
+        .catch(function(){if(my!==A.seq)return;st={msg:"Не вдалося прочитати. Заповніть поля вручну, скриншоти все одно збережуться."};drawDrop()})}
+    // Puts the AI's answer into the form. A field the AI filled before is replaced (or emptied); a field the person set is left alone.
+    function applyAi(x){var k=0;
+      if(A.ai.text||!txt.value.trim()){if(x.text){txt.value=x.text;txt.classList.add("ai-f");var lb=b.querySelector("#aTxtAi");lb.hidden=false;lb.lastChild.textContent=A.photos.length>1?"зі скриншотів":"зі скриншота";A.ai.text=1;k++;txt.style.height="";txt.style.height=Math.min(txt.scrollHeight+2,320)+"px"}else if(A.ai.text){txt.value="";txt.classList.remove("ai-f");b.querySelector("#aTxtAi").hidden=true;delete A.ai.text}}
+      if(!fixedLoc&&(A.ai.loc||!A.loc)){if(x.location_id&&LOCNAME[x.location_id]){setLoc(LOCNAME[x.location_id],1);k++}else if(A.ai.loc)setLoc(null)}
+      if(A.ai.ch||!A.ch){if(x.channel&&chs.indexOf(x.channel)>=0){setCh(x.channel,1);k++}else if(A.ai.ch)setCh(chs.length===1?chs[0]:null)}
+      if(A.ai.date||A.date===ME.today){if(x.date&&/^\d{4}-\d{2}-\d{2}$/.test(x.date)&&x.date<=ME.today){A.date=x.date;dt.value=x.date;dt.classList.add("ai-f");A.ai.date=1;k++}else if(A.ai.date){A.date=ME.today;dt.value=ME.today;dt.classList.remove("ai-f");delete A.ai.date}}
+      A.topics=x.topics||null;A.rating=x.rating||null;
+      b.querySelector("#aTags").innerHTML=(x.topics||[]).map(function(t){return '<span class="tag">'+esc(t)+'</span>'}).join("")+(x.rating?'<span class="tag">'+"★".repeat(x.rating)+'</span>':"");
+      check();return k}
+    drop.addEventListener("click",function(e){var d=e.target.closest("[data-shot-del]");
+      if(d){A.photos.splice(+d.dataset.shotDel,1);read();return}
+      if(e.target.closest("[data-shot-add]"))inp.click()});
+    inp.addEventListener("change",function(){var fs=[].slice.call(inp.files||[]);inp.value="";if(!fs.length)return;
+      var room=MAXPH-A.photos.length;if(fs.length>room)toast("Можна до "+MAXPH+" скриншотів, додано "+Math.max(room,0));
+      fs=fs.slice(0,Math.max(room,0));if(!fs.length)return;
+      st={t:"busy",msg:"Готуємо скриншоти…"};drawDrop();
+      Promise.all(fs.map(function(f){return shrink(f).catch(function(){return null})})).then(function(ps){
+        ps.forEach(function(p){if(p&&A.photos.length<MAXPH)A.photos.push(p)});
+        if(ps.some(function(p){return !p}))toast("Один із файлів не відкрився, додайте його ще раз");
+        read()})});
+    dt.addEventListener("change",function(){delete A.ai.date});
+    drawDrop();
     save.addEventListener("click",function(){if(save.disabled)return;busy(save,true);
       var sol=b.querySelector("#aSol");
-      api("add",{location_id:LOCBY[A.loc].id,channel:A.ch,text:txt.value.trim(),solution:sol?sol.value.trim():"",photo:A.photo,topics:A.topics,date:A.date,rating:A.rating})
+      api("add",{location_id:LOCBY[A.loc].id,channel:A.ch,text:txt.value.trim(),solution:sol?sol.value.trim():"",photos:A.photos.map(function(p){return {data:p.data,mime:p.mime}}),topics:A.topics,date:A.date,rating:A.rating})
         .then(function(row){closePanel();toast(row.result?"Скаргу додано у «Вирішені»":"Скаргу додано у «Чекають рішення»");
           if(row.happened_on.slice(0,7)!==S.mk){S.mk=row.happened_on.slice(0,7);setWindow(S.mk)}return loadMonth()})
         .catch(function(e){busy(save,false);toast(e.message)})});
