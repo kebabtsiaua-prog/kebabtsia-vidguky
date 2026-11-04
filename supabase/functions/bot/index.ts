@@ -10,7 +10,7 @@ import {
 } from "../_shared/common.ts";
 import { recipients } from "../_shared/uployal.ts";
 import { type BoltRow, importBolt } from "../_shared/bolt.ts";
-import { alertTake, dailyReport, type ImportResult, importGlovo, isGlovoReport, remindGlovo, take, takeButtonFor } from "../_shared/glovo.ts";
+import { alertTake, dailyReport, type ImportResult, importGlovo, isGlovoReport, remindGlovo, remindTake, take, takeButtonFor } from "../_shared/glovo.ts";
 import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, ownerId, setOf, type SurveyUser } from "../_shared/survey.ts";
 
 type Draft = {
@@ -604,6 +604,8 @@ Deno.serve(async (req) => {
       if (new URL(req.url).searchParams.has("digest")) return Response.json(await digest());
       if (new URL(req.url).searchParams.has("sheet")) return Response.json(await syncSheet());
       if (new URL(req.url).searchParams.has("glovo")) return Response.json(await remindGlovo(kyivToday()));
+      const slot = new URL(req.url).searchParams.get("take_remind");
+      if (slot && /^(10|14|18)$/.test(slot)) return Response.json(await remindTake(kyivToday(), slot));
       if (new URL(req.url).searchParams.has("report")) return Response.json({ ok: true, reported: await morningReport(kyivToday()) });
       const key = new URL(req.url).searchParams.get("announce");
       if (key) return Response.json(await announce(key));
