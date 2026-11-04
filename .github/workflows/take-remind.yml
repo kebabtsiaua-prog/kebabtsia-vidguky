@@ -1,0 +1,31 @@
+# Reminds the location's admins about Glovo complaints nobody took in work yet (owner 2026-11-04:
+# «нагадування по 3 рази на день поки не візьмуть»). 08/12/16 UTC = 10:00, 14:00, 18:00 in Kyiv in winter
+# (an hour later in summer). Each slot is sent once a day; complaints younger than 2 hours wait for the next one.
+name: Нагадування адмінам про скарги Glovo
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+    - cron: "0 12 * * *"
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: "10, 14 або 18"
+        default: "10"
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          ref="obpmsgxanigythxkvrmh"
+          slot="${{ inputs.slot }}"
+          if [ -z "$slot" ]; then
+            case "${{ github.event.schedule }}" in
+              "0 8 * * *") slot=10 ;; "0 12 * * *") slot=14 ;; *) slot=18 ;;
+            esac
+          fi
+          out=$(curl -sS "https://$ref.supabase.co/functions/v1/bot?take_remind=$slot")
+          echo "$out"
+          echo "::notice title=Glovo reminders::$out"

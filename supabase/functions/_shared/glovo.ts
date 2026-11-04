@@ -129,7 +129,7 @@ type Comp = { id: number; location_id: number; channel: string; text: string; ra
 
 const hm = (iso: string) => new Date(iso).toLocaleTimeString("uk-UA", { timeZone: "Europe/Kyiv", hour: "2-digit", minute: "2-digit" });
 
-async function alertText(c: Comp, viewer: number, taker: string | null): Promise<string> {
+async function alertText(c: Comp, viewer: number, taker: string | null, head = "🔴 <b>Нова скарга"): Promise<string> {
   const { data: loc } = await db.from("locations").select("name").eq("id", c.location_id).single();
   let from = "";
   if (c.source === "glovo") from = "🤖 бот знайшов у звіті Glovo";
@@ -139,7 +139,7 @@ async function alertText(c: Comp, viewer: number, taker: string | null): Promise
     from = `додав(ла) ${esc(a?.name ?? "")}`;
   }
   const lines = [
-    `🔴 <b>Нова скарга · ${esc(c.channel)}</b>`,
+    `${head} · ${esc(c.channel)}</b>`,
     "",
     `<b>Точка:</b> ${esc(loc?.name ?? "")}`,
     from ? `<b>Звідки:</b> ${from}` : "",
@@ -167,13 +167,17 @@ async function loadComp(id: number): Promise<Comp | null> {
 // Each new Glovo or Bolt complaint goes only to the location's admins: they react first (owner 2026-10-30).
 // The owner, Роман and Юра get one report a day instead (dailyReport). Whoever added it gets the button on their
 // own «Збережено» message (skip).
+async function locAdmins(locationId: number): Promise<number[]> {
+  const { data: la } = await db.from("user_locations").select("tg_id").eq("location_id", locationId);
+  const { data: active } = await db.from("users").select("tg_id").eq("active", true).eq("role", "loc_admin");
+  const live = new Set((active ?? []).map((u) => u.tg_id));
+  return [...new Set((la ?? []).map((r) => r.tg_id))].filter((t) => live.has(t));
+}
+
 export async function alertTake(id: number, skip?: number): Promise<number> {
   const c = await loadComp(id);
   if (!c) return 0;
-  const { data: la } = await db.from("user_locations").select("tg_id").eq("location_id", c.location_id);
-  const { data: active } = await db.from("users").select("tg_id").eq("active", true).eq("role", "loc_admin");
-  const live = new Set((active ?? []).map((u) => u.tg_id));
-  const admins = [...new Set((la ?? []).map((r) => r.tg_id))].filter((t) => live.has(t) && t !== skip);
+  const admins = (await locAdmins(c.location_id)).filter((t) => t !== skip);
   let sent = 0;
   for (const to of admins) {
     const r = await tg("sendMessage", { chat_id: to, parse_mode: "HTML", text: await alertText(c, to, null), reply_markup: alertKb(c, true) })
@@ -200,6 +204,39 @@ export async function take(id: number, by: { tg_id: number; name: string }): Pro
     }).catch(console.error);
   }
   return upd?.length ? "Взято в роботу" : `Уже взяв(ла) ${t?.name ?? "інший адмін"}`;
+}
+
+// A Glovo complaint nobody took yet: the location's admins are reminded 3 times a day until one of them presses
+// «беру в роботу» (owner 2026-11-04: «нагадування по 3 рази на день поки не візьмуть»). Each reminder replaces the
+// button on the previous message, so only the newest one can be pressed. A complaint younger than 2 hours waits for
+// the next slot. Complaints from before the button existed (2026-10-30) are left alone.
+export async function remindTake(today: string, slot: string): Promise<Record<string, unknown>> {
+  const { error: dup } = await db.from("bot_announcements").insert({ key: `take-remind-${today}-${slot}`, info: {} });
+  if (dup) return { ok: true, sent: 0, reason: "already sent this slot" };
+  const { data } = await db.from("complaints").select("id").eq("channel", "Glovo").is("taken_at", null).is("resolved_at", null)
+    .gte("created_at", "2026-10-30").lt("created_at", new Date(Date.now() - 2 * 3600000).toISOString()).order("created_at");
+  let sent = 0, complaints = 0;
+  const noAdmins: number[] = [];
+  for (const { id } of data ?? []) {
+    const c = await loadComp(id);
+    if (!c) continue;
+    const admins = await locAdmins(c.location_id);
+    if (!admins.length) { noAdmins.push(c.location_id); continue; }
+    complaints++;
+    const { data: old } = await db.from("complaint_alerts").select("chat_id,message_id").eq("complaint_id", id);
+    for (const to of admins) {
+      const r = await tg("sendMessage", {
+        chat_id: to, parse_mode: "HTML", text: await alertText(c, to, null, "⏰ <b>Нагадування: скаргу ще ніхто не взяв у роботу"),
+        reply_markup: alertKb(c, true),
+      }).catch(console.error);
+      if (!r?.ok) continue;
+      sent++;
+      const prev = (old ?? []).find((a) => a.chat_id === to);
+      if (prev) await tg("editMessageReplyMarkup", { chat_id: to, message_id: prev.message_id, reply_markup: alertKb(c, false) }).catch(console.error);
+      await db.from("complaint_alerts").upsert({ complaint_id: c.id, chat_id: to, message_id: r.result.message_id });
+    }
+  }
+  return { ok: true, complaints, sent, no_admins: [...new Set(noAdmins)] };
 }
 
 export async function takeButtonFor(id: number) {
