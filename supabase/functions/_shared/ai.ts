@@ -68,8 +68,9 @@ function channelNamed(text: string, channel: string | null): boolean {
 
 export async function parseComplaint(
   locations: Location[],
-  input: { text?: string; image?: { data: string; mime: string } },
+  input: { text?: string; image?: { data: string; mime: string }; images?: { data: string; mime: string }[] },
 ): Promise<Parsed> {
+  const images = input.images?.length ? input.images : input.image ? [input.image] : [];
   const fallback: Parsed = {
     location_id: locationInText(locations, input.text ?? ""),
     channel: null,
@@ -82,13 +83,19 @@ export async function parseComplaint(
   if (!apiKey) return fallback;
 
   const content: Anthropic.ContentBlockParam[] = [];
-  if (input.image) {
-    content.push({
-      type: "image",
-      source: { type: "base64", media_type: input.image.mime as "image/jpeg", data: input.image.data },
-    });
+  for (const [i, img] of images.entries()) {
+    // Each screenshot is numbered, so the model reads a long chat in the order it was added.
+    if (images.length > 1) content.push({ type: "text", text: `Скриншот ${i + 1} з ${images.length}:` });
+    content.push({ type: "image", source: { type: "base64", media_type: img.mime as "image/jpeg", data: img.data } });
   }
-  content.push({ type: "text", text: input.text?.trim() ? `Текст від менеджера:\n${input.text}` : "Розбери скриншот." });
+  const ask = images.length > 1
+    ? `Це ${images.length} скриншоти однієї скарги по порядку: довга переписка або відгук, що не вмістився на один екран. ` +
+      "Прочитай усі разом, як один текст. Точку, канал, дату і оцінку шукай на будь-якому з них. " +
+      "У «text» напиши суть скарги з усієї переписки: що сталося, важливі деталі (що замовили, коли, куди доставка, скільки чекали) і чого хоче гість. " +
+      "Відповіді працівників не переказуй, хіба що в них є важливий факт. Дата відгуку: день першого повідомлення гостя зі скаргою."
+    : "";
+  const note = input.text?.trim() ? `Текст від менеджера:\n${input.text}` : "";
+  content.push({ type: "text", text: [note, ask].filter(Boolean).join("\n\n") || "Розбери скриншот." });
 
   try {
     const client = new Anthropic({ apiKey });
@@ -98,7 +105,8 @@ export async function parseComplaint(
       max_tokens: 4000,
       system: system(locations),
       messages: [{ role: "user", content }],
-      output_config: { effort: "low", format: { type: "json_schema", schema: SCHEMA } },
+      // A long chat across several screenshots needs a bit more thought to put together.
+      output_config: { effort: images.length > 1 ? "medium" : "low", format: { type: "json_schema", schema: SCHEMA } },
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
     };
@@ -111,7 +119,7 @@ export async function parseComplaint(
     const channel = CHANNELS.includes(out.channel) ? out.channel : null;
     return {
       location_id: locationInText(locations, input.text ?? "") ?? loc?.id ?? null,
-      channel: input.image || channelNamed(input.text ?? "", channel) ? channel : null,
+      channel: images.length || channelNamed(input.text ?? "", channel) ? channel : null,
       text: String(out.text || fallback.text).trim(),
       date: /^\d{4}-\d{2}-\d{2}$/.test(out.date ?? "") && out.date <= kyivToday() ? out.date : null,
       topics: (out.topics ?? []).filter((t: string) => TOPICS.includes(t)),
