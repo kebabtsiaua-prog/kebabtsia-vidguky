@@ -271,8 +271,12 @@ export async function dailyReport(today: string): Promise<number> {
   const { data: near } = await db.from("complaints").select("id,location_id,channel,taken_by,taken_at,created_at")
     .in("channel", ["Glovo", "Bolt"]).gte("created_at", new Date(Date.parse(y) - 86400000).toISOString()).lt("created_at", `${today}T23:59:59Z`).order("location_id");
   const rows = (near ?? []).filter((r) => kyivDay(r.created_at) === y);
-  if (!rows.length) return 0;
-  const { error: dup } = await db.from("bot_announcements").insert({ key: `glovo-day-${today}`, info: { n: rows.length } });
+  // Bolt 1–2★ with no text are not complaints, but the bosses see them here (owner 2026-11-09: «в звіт додавай просто
+  // і пиши просто поставили і не написали причину»). Bolt's file comes ~13:00, so this lists what arrived since yesterday's report.
+  const { data: low } = await db.from("bolt_reviews").select("location_id,rating,rated_at").lte("rating", 2).eq("text", "")
+    .gte("created_at", new Date(Date.now() - 86400000).toISOString()).order("rated_at");
+  if (!rows.length && !low?.length) return 0;
+  const { error: dup } = await db.from("bot_announcements").insert({ key: `glovo-day-${today}`, info: { n: rows.length, low: low?.length ?? 0 } });
   if (dup) return 0;
   const locs = await activeLocations();
   const takers = [...new Set(rows.map((r) => r.taken_by).filter(Boolean))];
@@ -287,6 +291,12 @@ export async function dailyReport(today: string): Promise<number> {
     lines.push(`· ${esc(name(r.location_id))} · ${r.channel} · ${r.taken_at ? `✅ ${esc(by)}, через ${after}` : "⏳ ще не взяли"}`);
   }
   if (rows.length > 15) lines.push(`· і ще ${rows.length - 15}`);
+  if (low?.length) {
+    lines.push("", `⭐ <b>Низькі оцінки Bolt без тексту</b> (${low.length}):`);
+    const dm = (iso: string) => new Intl.DateTimeFormat("uk-UA", { timeZone: "Europe/Kyiv", day: "2-digit", month: "2-digit" }).format(new Date(iso));
+    for (const r of low.slice(0, 15)) lines.push(`· ${esc(r.location_id ? name(r.location_id) : "невідома точка")} · ${r.rating}★ · ${dm(r.rated_at)} · поставили і не написали причину`);
+    if (low.length > 15) lines.push(`· і ще ${low.length - 15}`);
+  }
   const owner = await ownerId();
   const { data: bosses } = await db.from("users").select("tg_id").eq("active", true).eq("can_grant", true);
   let sent = 0;
