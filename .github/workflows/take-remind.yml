@@ -3,11 +3,9 @@
 # (an hour later in summer). Each slot is sent once a day; complaints younger than 2 hours wait for the next one.
 name: Нагадування адмінам про скарги Glovo
 
+# The schedule itself lives in the database (pg_cron, migration 20261109170000): GitHub ran its cron hours late.
+# This workflow stays for a manual run.
 on:
-  schedule:
-    - cron: "0 8 * * *"
-    - cron: "0 12 * * *"
-    - cron: "0 16 * * *"
   workflow_dispatch:
     inputs:
       slot:
@@ -21,11 +19,6 @@ jobs:
       - run: |
           ref="obpmsgxanigythxkvrmh"
           slot="${{ inputs.slot }}"
-          if [ -z "$slot" ]; then
-            case "${{ github.event.schedule }}" in
-              "0 8 * * *") slot=10 ;; "0 12 * * *") slot=14 ;; *) slot=18 ;;
-            esac
-          fi
           out=$(curl -sS "https://$ref.supabase.co/functions/v1/bot?take_remind=$slot")
           echo "$out"
           echo "::notice title=Glovo reminders::$out"
