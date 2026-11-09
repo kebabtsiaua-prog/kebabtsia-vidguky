@@ -9,8 +9,8 @@ import {
   savePhoto, tabUrl, tg, tgFile, type User, webhookSecret,
 } from "../_shared/common.ts";
 import { recipients } from "../_shared/uployal.ts";
-import { type BoltRow, importBolt } from "../_shared/bolt.ts";
-import { alertTake, dailyReport, type ImportResult, importGlovo, isGlovoReport, remindGlovo, take, takeButtonFor } from "../_shared/glovo.ts";
+import { type BoltRow, importBolt, parseBoltReport } from "../_shared/bolt.ts";
+import { alertTake, dailyReport, type ImportResult, importGlovo, isGlovoReport, remindGlovo, remindTake, take, takeButtonFor } from "../_shared/glovo.ts";
 import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, ownerId, setOf, type SurveyUser } from "../_shared/survey.ts";
 
 type Draft = {
@@ -202,6 +202,23 @@ async function onMessage(msg: any) {
       ? { chat_id: chat, parse_mode: "HTML", text: "🧩 Ключ для розширення «Кебабця: звіт Glovo»:\n\n" +
         `<code>${await glovoKey(u.tg_id)}</code>\n\nНатисніть на ключ, щоб скопіювати, і вставте його в розширення. Нікому його не пересилайте.` }
       : { chat_id: chat, text: "Ключ для розширення Glovo видається лише власнику." });
+    return;
+  }
+
+  // Bolt's daily «Ratings_and_Comments» .xlsx, forwarded by hand when the Gmail script did not send it.
+  if (msg.document && /\.xlsx$/i.test(msg.document.file_name ?? "")) {
+    if (u.role !== "admin") {
+      await tg("sendMessage", { chat_id: chat, text: "Звіти Bolt завантажує власник. Скарги надсилайте скриншотом або текстом." });
+      return;
+    }
+    await tg("sendChatAction", { chat_id: chat, action: "typing" });
+    const report = parseBoltReport((await tgFile(msg.document.file_id)).bytes);
+    if (!report) {
+      await tg("sendMessage", { chat_id: chat, text: "Це не схоже на звіт Bolt «Ratings and Comments». Надішліть файл із листа Bolt." });
+      return;
+    }
+    const { res: _, ...summary } = await boltReportSummary(report);
+    await tg("sendMessage", { chat_id: chat, parse_mode: "HTML", ...summary });
     return;
   }
 
@@ -595,15 +612,46 @@ async function boltUpload(req: Request): Promise<Response> {
   return Response.json({ ok: true, ...r, complaints: r.complaints.length });
 }
 
+// Bolt's daily report: imported store by store, then one summary to the owner.
+async function boltReportSummary(report: Map<string, BoltRow[]>, via = "") {
+  const res = [];
+  for (const [store, rows] of report) res.push(await importBolt(store, rows));
+  const rated = res.reduce((n, r) => n + r.rows, 0), fresh = res.reduce((n, r) => n + r.fresh, 0);
+  const comps = res.flatMap((r) => r.complaints), unknown = res.filter((r) => !r.known).map((r) => r.store);
+  const lines = ["🟢 <b>Звіт Bolt</b>", via, "", `Оцінок і відгуків у файлі: <b>${rated}</b>, нових: <b>${fresh}</b>.`];
+  if (comps.length) {
+    lines.push(`Нові скарги (${comps.length}):`);
+    for (const c of comps) lines.push(`· №${c.id} ${esc(c.loc)}`);
+    lines.push("", "Адміни точок отримали сповіщення.");
+  } else if (fresh) lines.push("Негативних відгуків немає 👍");
+  else lines.push("Усі вже були додані раніше.");
+  if (unknown.length) lines.push("", `⚠️ Не знаю, які це точки: ${unknown.map((x) => `«${esc(x)}»`).join(", ")}. Їхні відгуки збережено, але скарг не додано. Напишіть розробнику.`);
+  return { text: lines.filter((x, i) => x || i !== 1).join("\n"), reply_markup: { inline_keyboard: [[{ text: "Відкрити чергу", web_app: { url: tabUrl("queue") } }]] }, res: { stores: res.length, rated, fresh, complaints: comps.length, unknown } };
+}
+
+// The Google Apps Script in the owner's Gmail sends the xlsx attached to Bolt's daily email (raw bytes).
+async function boltReportUpload(req: Request): Promise<Response> {
+  const u = await extensionUser(req);
+  if (!u) return Response.json({ ok: false, error: "key" }, { status: 403 });
+  const report = parseBoltReport(new Uint8Array(await req.arrayBuffer()));
+  if (!report) return Response.json({ ok: false, error: "not a report" }, { status: 400 });
+  const { res, ...msg } = await boltReportSummary(report, "📧 Скрипт забрав файл із листа Bolt сам.");
+  if (res.fresh || res.unknown.length) await tg("sendMessage", { chat_id: u.tg_id, parse_mode: "HTML", ...msg });
+  return Response.json({ ok: true, ...res });
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method === "POST" && new URL(req.url).searchParams.has("glovo_csv")) return await glovoUpload(req);
+    if (req.method === "POST" && new URL(req.url).searchParams.has("bolt_xlsx")) return await boltReportUpload(req);
     if (req.method === "POST" && new URL(req.url).searchParams.has("bolt")) return await boltUpload(req);
     if (req.method === "GET") {
       if (new URL(req.url).searchParams.has("chats")) return Response.json(await listChats());
       if (new URL(req.url).searchParams.has("digest")) return Response.json(await digest());
       if (new URL(req.url).searchParams.has("sheet")) return Response.json(await syncSheet());
       if (new URL(req.url).searchParams.has("glovo")) return Response.json(await remindGlovo(kyivToday()));
+      const slot = new URL(req.url).searchParams.get("take_remind");
+      if (slot && /^(10|14|18)$/.test(slot)) return Response.json(await remindTake(kyivToday(), slot));
       if (new URL(req.url).searchParams.has("report")) return Response.json({ ok: true, reported: await morningReport(kyivToday()) });
       const key = new URL(req.url).searchParams.get("announce");
       if (key) return Response.json(await announce(key));
