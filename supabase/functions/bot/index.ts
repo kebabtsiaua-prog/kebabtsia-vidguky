@@ -625,6 +625,11 @@ async function boltReportSummary(report: Map<string, BoltRow[]>, via = "") {
     lines.push("", "Адміни точок отримали сповіщення.");
   } else if (fresh) lines.push("Негативних відгуків немає 👍");
   else lines.push("Усі вже були додані раніше.");
+  const low = [...report].flatMap(([store, rows]) => rows.filter((r) => r.rating !== null && r.rating <= 2 && !r.text).map((r) => ({ store, ...r })));
+  if (low.length) {
+    lines.push("", `⭐ Низькі оцінки без тексту (${low.length}), скаргами не стали:`);
+    for (const r of low.slice(0, 15)) lines.push(`· ${esc(r.store)} · ${r.rating}★ · ${r.at.slice(0, 5)} · поставили і не написали причину`);
+  }
   if (unknown.length) lines.push("", `⚠️ Не знаю, які це точки: ${unknown.map((x) => `«${esc(x)}»`).join(", ")}. Їхні відгуки збережено, але скарг не додано. Напишіть розробнику.`);
   return { text: lines.filter((x, i) => x || i !== 1).join("\n"), reply_markup: { inline_keyboard: [[{ text: "Відкрити чергу", web_app: { url: tabUrl("queue") } }]] }, res: { stores: res.length, rated, fresh, complaints: comps.length, unknown } };
 }
