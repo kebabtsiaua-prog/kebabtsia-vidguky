@@ -167,11 +167,16 @@ async function loadComp(id: number): Promise<Comp | null> {
 // Each new Glovo or Bolt complaint goes only to the location's admins: they react first (owner 2026-10-30).
 // The owner, Роман and Юра get one report a day instead (dailyReport). Whoever added it gets the button on their
 // own «Збережено» message (skip).
+// A location without an admin: its Glovo/Bolt alerts and reminders go to Роман, the operations director
+// (2026-11-10: «Приходять Роману нехай йому йдуть»). He is found by name among the active admins.
 async function locAdmins(locationId: number): Promise<number[]> {
   const { data: la } = await db.from("user_locations").select("tg_id").eq("location_id", locationId);
   const { data: active } = await db.from("users").select("tg_id").eq("active", true).eq("role", "loc_admin");
   const live = new Set((active ?? []).map((u) => u.tg_id));
-  return [...new Set((la ?? []).map((r) => r.tg_id))].filter((t) => live.has(t));
+  const admins = [...new Set((la ?? []).map((r) => r.tg_id))].filter((t) => live.has(t));
+  if (admins.length) return admins;
+  const { data: roman } = await db.from("users").select("tg_id").eq("active", true).eq("role", "admin").ilike("name", "роман%").limit(1);
+  return (roman ?? []).map((u) => u.tg_id);
 }
 
 export async function alertTake(id: number, skip?: number): Promise<number> {
