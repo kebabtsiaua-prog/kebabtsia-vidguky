@@ -94,3 +94,19 @@ from (values
   (24, 'Google', '2026-10-22', 'шавуха топ, касир діана максимально неприємна', '{"Персонал"}')
 ) as v(loc, channel, d, text, topics)
 on conflict (external_id) do nothing;
+
+-- 5) October 4–5★ app ratings with a complaint in the text, which the girls counted (owner 2026-11-11: such ratings
+--    are complaints from now on).
+insert into complaints (location_id, channel, happened_on, text, rating, topics, source, external_id)
+select r.location_id, 'Оцінки в додатку', r.rated_on, r.comment, r.rating, v.topics::text[], 'uployal', r.external_id
+from (values
+  (2, '2026-10-30', 'Був частково холодним%', '{"Холодний","Розмір і ціна"}'),
+  (1, '2026-10-22', 'Вже третій раз приходжу на сніданковий%', '{"Забули додаток"}'),
+  (5, '2026-10-14', 'Все файно, але просила кебаб без огірка%', '{"Овочі / капуста"}'),
+  (15, '2026-10-14', 'добре, порвався%', '{"Розвалюється"}'),
+  (11, '2026-10-02', 'не погано но довго чекав%', '{"Довге очікування"}'),
+  (3, '2026-10-09', 'загалом добре але занадто пересолений%', '{"М''ясо"}')
+) as v(loc, d, pat, topics)
+join app_ratings r on r.location_id = v.loc and r.rated_on = v.d::date and r.comment ilike v.pat
+where r.external_id is not null
+on conflict (external_id) do nothing;
