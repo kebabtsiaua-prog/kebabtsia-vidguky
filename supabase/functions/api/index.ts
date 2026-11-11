@@ -1,5 +1,6 @@
 // Mini-app backend. Every request: POST { initData, action, ...args }; the Telegram user is taken from initData.
 import { syncSheet } from "../_shared/sheet.ts";
+import { findDuplicate, googleMatch } from "../_shared/dedupe.ts";
 import * as XLSX from "npm:xlsx@0.18.5";
 import { parseComplaint } from "../_shared/ai.ts";
 import {
@@ -372,7 +373,22 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
         rating: Number.isInteger(p.rating) && p.rating > 0 ? p.rating : null,
         source: "app",
         created_by: u.tg_id,
+        external_id: null as string | null,
       };
+      // A Google review typed by hand takes the real date, stars and id of that review (2026-11-11 check).
+      if (row.channel === "Google") {
+        const g = await googleMatch(locId!, text, row.happened_on);
+        if (g) {
+          row.external_id = g.external_id;
+          if (g.happened_on) row.happened_on = g.happened_on;
+          row.rating ??= g.rating;
+        }
+      }
+      const dup = await findDuplicate({ ...row, location_id: locId! });
+      if (dup) {
+        const { data: old } = await db.from("complaints").select().eq("id", dup).single();
+        return { ...old, duplicate: true };
+      }
       const { data, error } = await db.from("complaints").insert(row).select().single();
       must(!error, "Не вдалося зберегти");
       const photos = photosIn(p);

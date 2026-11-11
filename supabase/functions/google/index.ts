@@ -5,6 +5,7 @@
 // Needs GOOGLE_MAPS_API_KEY in Supabase secrets; without it does nothing.
 import { db, itemUrl, kyivToday, tg } from "../_shared/common.ts";
 import { NEGATIVE_MAX, recipients } from "../_shared/uployal.ts";
+import { alias, findDuplicate } from "../_shared/dedupe.ts";
 
 const PLACES = "https://places.googleapis.com/v1";
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
@@ -110,12 +111,12 @@ type Review = {
 const escH = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
 const DAY = 86400000;
 
-// Records reviews not seen before. A low one published in the last 14 days becomes a complaint; on the first check of a
-// place only ones from the last 2 days do, so older reviews already entered by hand are not added again.
+// Records reviews not seen before. A low one published in the last 14 days becomes a complaint, unless the team
+// already typed it in by hand (then the hand-made one gets the review's id). Until 2026-11-11 the first check of a
+// place took only the last 2 days, which skipped 4 low October reviews.
 async function takeReviews(l: Loc, reviews: Review[]) {
   if (!reviews.length) return 0;
-  const { count: seen } = await db.from("google_reviews").select("id", { count: "exact", head: true }).eq("location_id", l.id);
-  const window = (seen ? 14 : 2) * DAY;
+  const window = 14 * DAY;
   let made = 0;
   for (const r of reviews) {
     const text = (r.originalText?.text || r.text?.text || "").trim();
@@ -127,9 +128,16 @@ async function takeReviews(l: Loc, reviews: Review[]) {
     const at = r.publishTime ? new Date(r.publishTime) : null;
     if (!r.rating || r.rating > NEGATIVE_MAX || !at || Date.now() - at.getTime() > window) continue;
     const day = at.toLocaleDateString("sv-SE", { timeZone: "Europe/Kyiv" });
+    const ext = `google:${r.name}`;
+    const dup = await findDuplicate({ location_id: l.id, channel: "Google", happened_on: day, text, external_id: ext });
+    if (dup) {
+      await alias(ext, dup);
+      await db.from("complaints").update({ rating: r.rating }).eq("id", dup).is("rating", null);
+      continue;
+    }
     const { data: c } = await db.from("complaints").insert({
       location_id: l.id, channel: "Google", happened_on: day, rating: r.rating,
-      text: text || `Оцінка ${r.rating} без коментаря`, source: "google", external_id: `google:${r.name}`,
+      text: text || `Оцінка ${r.rating} без коментаря`, source: "google", external_id: ext,
     }).select("id").maybeSingle();
     if (!c) continue;
     made++;

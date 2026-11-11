@@ -2,6 +2,8 @@
 // A person sends a screenshot or text → AI fills location, channel and the complaint → buttons to fix and save.
 // GET ?setup=1 (called by the deploy workflow) points the webhook and the menu button at this function.
 import { syncSheet } from "../_shared/sheet.ts";
+import { findDuplicate, googleMatch } from "../_shared/dedupe.ts";
+import { importGirlsSheet } from "../_shared/girlsheet.ts";
 import { b64, parseComplaint } from "../_shared/ai.ts";
 import { listChats, onGroupMessage, onMembership } from "../_shared/uployal.ts";
 import {
@@ -341,10 +343,23 @@ async function onCallback(cb: any) {
       await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Спершу виберіть точку і канал" });
       return;
     }
-    const { data: row, error } = await db.from("complaints").insert({
-      location_id: d.loc, channel: d.ch, happened_on: d.date, text: d.text, topics: d.topics, rating: d.rating,
-      source: "bot", created_by: u.tg_id,
-    }).select("id").single();
+    const g = d.ch === "Google" ? await googleMatch(d.loc, d.text, d.date) : null;
+    const draft = {
+      location_id: d.loc, channel: d.ch, happened_on: g?.happened_on ?? d.date, text: d.text, topics: d.topics,
+      rating: d.rating ?? g?.rating ?? null, external_id: g?.external_id ?? null,
+    };
+    const dup = await findDuplicate(draft);
+    if (dup) {
+      await db.from("bot_drafts").delete().eq("id", id);
+      await tg("editMessageText", {
+        chat_id: chat, message_id: msgId, parse_mode: "HTML",
+        text: `ℹ️ <b>Така скарга вже є · №${dup}</b>\nДругу не додаю, щоб не було дубля.\n<blockquote>${esc(d.text)}</blockquote>`,
+        reply_markup: { inline_keyboard: [[{ text: "Відкрити скаргу", web_app: { url: itemUrl(dup) } }]] },
+      });
+      await tg("answerCallbackQuery", { callback_query_id: cb.id });
+      return;
+    }
+    const { data: row, error } = await db.from("complaints").insert({ ...draft, source: "bot", created_by: u.tg_id }).select("id").single();
     if (error) {
       await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Не вдалося зберегти, спробуйте ще раз" });
       return;
@@ -645,10 +660,35 @@ async function boltReportUpload(req: Request): Promise<Response> {
   return Response.json({ ok: true, ...res });
 }
 
+// The girls' review sheet, sent by the Apps Script in it (apps-script/girls-sheet/Code.gs). The owner of the key gets
+// a short note only when something new came in, so a quiet day sends nothing.
+async function girlsSheetUpload(req: Request): Promise<Response> {
+  const u = await extensionUser(req);
+  if (!u) return Response.json({ ok: false, error: "key" }, { status: 403 });
+  const { tabs } = await req.json().catch(() => ({ tabs: null }));
+  if (!Array.isArray(tabs)) return Response.json({ ok: false, error: "no tabs" }, { status: 400 });
+  const res = await importGirlsSheet(tabs);
+  if (res.added.length) {
+    const short = (n: string) => n.replace(/^Львів, /, "").replace(/ \(.*\)$/, "");
+    const lines = [`📋 <b>Таблиця відгуків: ${res.added.length} нових, яких не було в апці</b>`, ""];
+    for (const a of res.added.slice(0, 15)) {
+      lines.push(`· ${esc(short(a.loc))}, ${esc(a.channel)}, ${a.day.slice(8)}.${a.day.slice(5, 7)}: ${esc(a.text.slice(0, 80))}${a.text.length > 80 ? "…" : ""}`);
+    }
+    if (res.added.length > 15) lines.push(`· і ще ${res.added.length - 15}`);
+    lines.push("", `Уже були в апці: ${res.linked}. Усі нові — у «Чекають рішення».`);
+    await tg("sendMessage", {
+      chat_id: u.tg_id, parse_mode: "HTML", text: lines.join("\n"),
+      reply_markup: { inline_keyboard: [[{ text: "Відкрити чергу", web_app: { url: tabUrl("queue") } }]] },
+    }).catch(console.error);
+  }
+  return Response.json({ ok: true, added: res.added.length, linked: res.linked, tabs: res.tabs.length, skipped: res.skipped });
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method === "POST" && new URL(req.url).searchParams.has("glovo_csv")) return await glovoUpload(req);
     if (req.method === "POST" && new URL(req.url).searchParams.has("bolt_xlsx")) return await boltReportUpload(req);
+    if (req.method === "POST" && new URL(req.url).searchParams.has("girls_sheet")) return await girlsSheetUpload(req);
     if (req.method === "POST" && new URL(req.url).searchParams.has("bolt")) return await boltUpload(req);
     if (req.method === "GET") {
       if (new URL(req.url).searchParams.has("chats")) return Response.json(await listChats());
