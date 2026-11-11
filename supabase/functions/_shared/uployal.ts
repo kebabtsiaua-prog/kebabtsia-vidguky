@@ -3,6 +3,7 @@
 // keeps every rating for the monthly count and turns low ones with a real comment into complaints with a direct message
 // to the team. A low rating without a comment only counts in the statistics (owner, 2026-10-23: too much noise otherwise).
 import { db, hasComment, itemUrl, kyivToday, tg } from "./common.ts";
+import { negativeReviews } from "./ai.ts";
 
 export const NEGATIVE_MAX = 3; // 1–3 stars count as a complaint
 
@@ -103,16 +104,24 @@ export async function onGroupMessage(msg: any) {
     location_id: locId, rated_on: day, rating: r.rating, comment: r.comment, external_id: ext, chat_id: chat.id,
   });
   if (error) return; // already counted (same order posted twice)
-  if (r.rating > NEGATIVE_MAX || !hasComment(r.comment)) return;
+  if (!hasComment(r.comment)) return;
+  // 4–5★ with a real complaint in the text («5★, просила без огірка, поклали») is a complaint too (owner 2026-11-11);
+  // AI reads the text, and when it cannot, a high rating stays only in the statistics.
+  let topics: string[] | undefined;
+  if (r.rating > NEGATIVE_MAX) {
+    const [v] = await negativeReviews([r.comment], false);
+    if (!v?.negative) return;
+    topics = v.topics;
+  }
 
   const { data: c } = await db.from("complaints").insert({
     location_id: locId, channel: "Оцінки в додатку", happened_on: day, rating: r.rating,
-    text: r.comment, source: "uployal", external_id: ext,
+    text: r.comment, source: "uployal", external_id: ext, ...(topics?.length ? { topics } : {}),
   }).select("id").maybeSingle();
   if (!c) return;
   const loc = locs.find((l) => l.id === locId)!;
   const lines = [
-    `🔴 <b>Оцінка ${r.rating} з 5 у додатку</b>`,
+    r.rating > NEGATIVE_MAX ? `🟡 <b>Оцінка ${r.rating} з 5 у додатку, але з претензією</b>` : `🔴 <b>Оцінка ${r.rating} з 5 у додатку</b>`,
     `${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)} · ${fmt(day)}`,
     "",
     `<b>Точка:</b> ${escH(loc.name)}`,

@@ -134,9 +134,10 @@ export async function parseComplaint(
 
 // Glovo report rows carry no usable stars, so the text decides: only negative reviews become complaints (owner 2026-10-30).
 // Bolt reviews go the same way.
-// One request for the whole file. Without AI every review with text counts as negative, so none is lost.
-export async function negativeReviews(texts: string[]): Promise<{ negative: boolean; topics: string[] }[]> {
-  const fallback = texts.map((t) => ({ negative: true, topics: keywordTopics(t) }));
+// One request for the whole file. Without AI every review with text counts as negative, so none is lost —
+// unless `ifUnsure` says otherwise (a 4–5★ app rating is not a complaint when nobody could read it).
+export async function negativeReviews(texts: string[], ifUnsure = true): Promise<{ negative: boolean; topics: string[] }[]> {
+  const fallback = texts.map((t) => ({ negative: ifUnsure, topics: keywordTopics(t) }));
   const apiKey = Deno.env.get("ANTHROPIC_API_KEY")?.trim();
   if (!apiKey || !texts.length) return fallback;
   const schema = {
@@ -165,7 +166,7 @@ export async function negativeReviews(texts: string[]): Promise<{ negative: bool
     const params: any = {
       model: "claude-opus-5-5",
       max_tokens: 8000,
-      system: "Ти читаєш відгуки гостей мережі кебабних «Кебабця» з доставки (Glovo, Bolt). Для кожного відгуку визнач, чи гість на щось скаржиться (negative), і теми скарги зі списку.",
+      system: "Ти читаєш відгуки гостей мережі кебабних «Кебабця» (доставка Glovo, Bolt або оцінки в додатку). Для кожного відгуку визнач, чи гість на щось скаржиться (negative), і теми скарги зі списку.",
       messages: [{ role: "user", content: texts.map((t, i) => `${i + 1}. ${t}`).join("\n") }],
       output_config: { effort: "low", format: { type: "json_schema", schema } },
       betas: ["server-side-fallback-2026-07-01"],

@@ -1084,7 +1084,7 @@ function openAdd(preLoc){
     save.addEventListener("click",function(){if(save.disabled)return;busy(save,true);
       var sol=b.querySelector("#aSol");
       api("add",{location_id:LOCBY[A.loc].id,channel:A.ch,text:txt.value.trim(),solution:sol?sol.value.trim():"",photos:A.photos.map(function(p){return {data:p.data,mime:p.mime}}),topics:A.topics,date:A.date,rating:A.rating})
-        .then(function(row){closePanel();toast(row.result?"Скаргу додано у «Вирішені»":"Скаргу додано у «Чекають рішення»");
+        .then(function(row){closePanel();toast(row.duplicate?"Така скарга вже є (№"+row.id+"), другу не додаю":row.result?"Скаргу додано у «Вирішені»":"Скаргу додано у «Чекають рішення»");
           if(row.happened_on.slice(0,7)!==S.mk){S.mk=row.happened_on.slice(0,7);setWindow(S.mk)}return loadMonth()})
         .catch(function(e){busy(save,false);toast(e.message)})});
     check();
