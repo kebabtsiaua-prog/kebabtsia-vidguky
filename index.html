@@ -629,6 +629,7 @@ function shiftMk(mk,by){var y=+mk.slice(0,4),m=+mk.slice(5,7)-1+by;y+=Math.floor
 function mNum(mk){return +mk.slice(5,7)-1}
 function setWindow(mk){MK=[];for(var i=5;i>=0;i--)MK.push(shiftMk(mk,-i));MNOM=MK.map(function(k){return NOM[mNum(k)]});MLOC=MK.map(function(k){return LOC_[mNum(k)]});MSHORT=MK.map(function(k){return SHORT[mNum(k)]});MGEN=MK.map(function(k){return GEN[mNum(k)]})}
 function isStaff(){return ME&&(ME.user.role==="admin"||ME.user.role==="comms")}
+function canResolve(r){return isStaff()||!!(ME&&ME.user.role==="operator"&&r.by===ME.user.tg_id)}
 function isAdmin(){return ME&&ME.user.role==="admin"}
 function isLocAdmin(){return ME&&ME.user.role==="loc_admin"}
 // A location admin with one location gets that location's page; with several, a list of their locations.
@@ -972,7 +973,7 @@ function busy(btn,on){if(!btn)return;btn.disabled=on;if(on){btn.dataset.t=btn.in
 function openItem(idn){
   var r=items.filter(function(x){return x.id===idn})[0];if(!r)return;
   var ctx=S.ctx.indexOf(idn)>=0?S.ctx.slice():[idn],pos=ctx.indexOf(idn);
-  var staff=isStaff(),st={result:r.result,who:r.who||(staff?ME.user.name:"")};
+  var staff=canResolve(r),st={result:r.result,who:r.who||(staff?ME.user.name:"")};
   var p=parts(r.loc),a=addedBy(r),open=isOpen(r),ag=age(r);
   var body='<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+(open?(r.taken?'<span class="pill done">В роботі · '+esc(PEOPLE[r.takenBy]||"адмін")+'</span>':'<span class="pill '+(ag>LATE?"late":"open")+'">'+(ag?"Чекає "+ag+" "+plural(ag,"день","дні","днів"):"Нова, чекає рішення")+'</span>'):'<span class="pill done">Вирішено'+(r.who?" · "+esc(r.who):"")+'</span>')+
     '<span class="byw'+(a.auto?" auto":"")+'" style="margin-left:auto"><span class="ava">'+(a.auto?I("spark"):esc(initials(a.name)))+'</span>Додав(ла): '+esc(a.name)+'</span></div>';
@@ -1031,7 +1032,7 @@ function openAdd(preLoc){
     '<div><div class="lbl">Дата відгуку</div><input class="pick" type="date" id="aDate" value="'+A.date+'" max="'+ME.today+'"></div></div>'+
     '<div><div class="lbl">Канал <span class="req">*</span></div><div class="chs" id="aCh">'+chs.map(function(c){return '<button class="'+(A.ch===c?"on":"")+'" data-v="'+esc(c)+'">'+cb(c,1)+esc(c)+'</button>'}).join("")+'</div></div>'+
     '<div><div class="lbl">Суть проблеми <span class="req">*</span><span class="ai" id="aTxtAi" style="margin-left:auto" hidden>'+I("spark")+'зі скриншота</span></div><textarea id="aTxt" placeholder="Що сталося, як написав гість"></textarea><div class="tags" id="aTags"></div></div>'+
-    (isStaff()?'<div><div class="lbl">Рішення <span class="opt-n">· можна пізніше</span></div><textarea id="aSol" style="min-height:60px" placeholder="Якщо вже вирішили"></textarea></div>':"");
+    (isStaff()||ME.user.role==="operator"?'<div><div class="lbl">Рішення <span class="opt-n">· можна пізніше</span></div><textarea id="aSol" style="min-height:60px" placeholder="Якщо вже вирішили"></textarea></div>':"");
   var foot='<span class="sp" id="aHint"></span><button class="btn2" data-close2>Скасувати</button><button class="btnk" id="aSave" disabled>Додати скаргу</button>';
   openPanel({id:"Нова скарга",title:"Додайте скриншоти, решту заповнить ШІ",body:body,foot:foot,mount:function(el){
     var b=el,locB=b.querySelector("#aLoc"),txt=b.querySelector("#aTxt"),save=b.querySelector("#aSave"),hint=b.querySelector("#aHint"),dt=b.querySelector("#aDate");

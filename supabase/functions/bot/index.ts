@@ -260,7 +260,7 @@ async function onMessage(msg: any) {
   const own = ownLocations(u);
   const d: Draft = {
     loc: own ? (own.length === 1 ? own[0] : own.includes(p.location_id ?? -1) ? p.location_id : null) : p.location_id,
-    ch: p.channel && allowed.includes(p.channel) ? p.channel : allowed.length === 1 ? allowed[0] : null,
+    ch: p.channel && allowed.includes(p.channel) ? p.channel : allowed.length === 1 || u.role === "operator" ? allowed[0] : null,
     text: p.text || text,
     date: p.date ?? kyivToday(),
     topics: p.topics,
