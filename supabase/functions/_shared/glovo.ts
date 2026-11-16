@@ -211,14 +211,14 @@ export async function take(id: number, by: { tg_id: number; name: string }): Pro
   return upd?.length ? "Взято в роботу" : `Уже взяв(ла) ${t?.name ?? "інший адмін"}`;
 }
 
-// A Glovo complaint nobody took yet: the location's admins are reminded 3 times a day until one of them presses
+// A Glovo or Bolt complaint nobody took yet (Bolt added 2026-11-16, owner: «так»; Bolt rows typed in from the sheet are left out): the location's admins are reminded 3 times a day until one of them presses
 // «беру в роботу» (owner 2026-11-04: «нагадування по 3 рази на день поки не візьмуть»). Each reminder replaces the
 // button on the previous message, so only the newest one can be pressed. A complaint younger than 2 hours waits for
 // the next slot. Complaints from before the button existed (2026-10-30) are left alone.
 export async function remindTake(today: string, slot: string): Promise<Record<string, unknown>> {
   const { error: dup } = await db.from("bot_announcements").insert({ key: `take-remind-${today}-${slot}`, info: {} });
   if (dup) return { ok: true, sent: 0, reason: "already sent this slot" };
-  const { data } = await db.from("complaints").select("id").eq("channel", "Glovo").is("taken_at", null).is("resolved_at", null)
+  const { data } = await db.from("complaints").select("id").or("channel.eq.Glovo,source.eq.bolt").is("taken_at", null).is("resolved_at", null)
     .gte("created_at", "2026-10-30").lt("created_at", new Date(Date.now() - 2 * 3600000).toISOString()).order("created_at");
   let sent = 0, complaints = 0;
   const noAdmins: number[] = [];
