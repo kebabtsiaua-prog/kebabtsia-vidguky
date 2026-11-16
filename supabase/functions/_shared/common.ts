@@ -26,7 +26,7 @@ export const ROLES: Record<string, string> = {
 // Channels each role may add. Missing = all channels.
 const ROLE_CHANNELS: Record<string, string[]> = {
   loc_admin: ["Glovo", "Bolt"],
-  operator: ["Сайт"], // owner 2026-10-27: operators handle only the website for now
+  operator: ["Оператори", "Сайт"], // phone calls first: ~all operator complaints come by phone (team survey, 2026-11-16)
 };
 export function channelsFor(role: string): string[] {
   return ROLE_CHANNELS[role] ?? CHANNELS;

@@ -22,6 +22,8 @@ const must = (ok: unknown, msg: string) => {
   if (!ok) throw new Fail(msg);
 };
 const isStaff = (u: User) => u.role === "admin" || u.role === "comms";
+// Operators settle their own complaints themselves (team survey), so they write the solution on what they added.
+const canResolve = (u: User, createdBy: number | null) => isStaff(u) || (u.role === "operator" && createdBy === u.tg_id);
 
 // Screenshots sent by the app: up to 6 per complaint (a long chat takes several). Older app versions send one as `photo`.
 const MAX_PHOTOS = 6;
@@ -367,9 +369,9 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
         text,
         topics: Array.isArray(p.topics) && p.topics.length ? p.topics.filter((t: string) => TOPICS.includes(t)) : keywordTopics(text),
         solution,
-        result: solution && isStaff(u) ? (RESULTS.includes(p.result) ? p.result : "Владнано") : "",
-        who: solution && isStaff(u) ? String(p.who || u.name) : "",
-        resolved_at: solution && isStaff(u) ? new Date().toISOString() : null,
+        result: solution && canResolve(u, u.tg_id) ? (RESULTS.includes(p.result) ? p.result : "Владнано") : "",
+        who: solution && canResolve(u, u.tg_id) ? String(p.who || u.name) : "",
+        resolved_at: solution && canResolve(u, u.tg_id) ? new Date().toISOString() : null,
         rating: Number.isInteger(p.rating) && p.rating > 0 ? p.rating : null,
         source: "app",
         created_by: u.tg_id,
@@ -401,7 +403,8 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
     }
 
     case "save": {
-      must(isStaff(u), "Рішення записують комунікаційники");
+      const { data: was } = await db.from("complaints").select("created_by").eq("id", p.id).maybeSingle();
+      must(was && canResolve(u, was.created_by), "Рішення записують комунікаційники");
       const solution = String(p.solution ?? "").trim();
       must(solution && RESULTS.includes(p.result), "Запишіть рішення і виберіть результат");
       const { data, error } = await db.from("complaints").update({
