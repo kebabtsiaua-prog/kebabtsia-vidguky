@@ -766,7 +766,7 @@ function side(){
   return '<aside class="side"><div class="brand"><img class="lh-l" src="img/logo-h.png" alt="Кебабця"><img class="lh-d" src="img/logo-h-dark.png" alt="Кебабця"><span>Скарги гостей</span></div>'+
   '<button class="new" data-add>'+I("plus")+'Нова скарга</button>'+
   tabsFor().map(function(x){return '<button class="nv'+(x[0]===on?" on":"")+'" data-tab="'+x[0]+'">'+I(x[2])+x[1]+(x[0]==="queue"&&n?'<span class="cnt">'+n+'</span>':"")+'</button>'}).join("")+
-  '<div class="grow"></div>'+(isAdmin()?'<button class="nv" data-settings>'+I("cog")+'Налаштування</button>':"")+
+  '<div class="grow"></div><button class="nv" data-tour>'+I("star")+'Як працює апка</button>'+(isAdmin()?'<button class="nv" data-settings>'+I("cog")+'Налаштування</button>':"")+
   '<div class="me"><div class="ava">'+esc(initials(ME.user.name))+'</div><div><b>'+esc(ME.user.name)+'</b><span>'+esc(ME.roles[ME.user.role]||"")+'</span></div></div></aside>';
 }
 function tabbar(){
@@ -1107,9 +1107,10 @@ function openMore(){
   var rows=[];
   tabsFor().slice(3).forEach(function(t){rows.push('<button class="li" data-go="'+t[0]+'"><span class="ic">'+I(t[2])+'</span><span class="tx">'+t[1]+'</span>'+I("right")+'</button>')});
   rows.push('<button class="li" data-go="export"><span class="ic">'+I("file")+'</span><span class="tx">Звіт Excel у чат<small>за '+MNOM[5]+' '+S.mk.slice(0,4)+'</small></span>'+I("right")+'</button>');
+  rows.push('<button class="li" data-go="tour"><span class="ic">'+I("star")+'</span><span class="tx">Як працює апка<small>коротка екскурсія</small></span>'+I("right")+'</button>');
   if(isAdmin())rows.push('<button class="li" data-go="settings"><span class="ic">'+I("cog")+'</span><span class="tx">Налаштування<small>доступи, чеки, точки</small></span>'+I("right")+'</button>');
   openPanel({title:ME.user.name,id:esc(ME.roles[ME.user.role]||""),narrow:true,body:'<div>'+rows.join("")+'</div>',mount:function(el){el.querySelector(".dr-b").addEventListener("click",function(e){var b=e.target.closest("[data-go]");if(!b)return;var g=b.dataset.go;closePanel();
-    if(g==="export")sendExport();else if(g==="settings")openSettings();else{S.tab=g;S.loc=null;render();window.scrollTo(0,0)}})}});
+    if(g==="export")sendExport();else if(g==="tour")tourReplay();else if(g==="settings")openSettings();else{S.tab=g;S.loc=null;render();window.scrollTo(0,0)}})}});
 }
 function sendExport(btn){if(btn)busy(btn,true);api("export",{month:S.mk}).then(function(){toast("Файл надіслано вам у чат з ботом")}).catch(function(e){toast(e.message)}).then(function(){if(btn)busy(btn,false)})}
 function openSettings(){
@@ -1231,6 +1232,7 @@ app.addEventListener("click",function(e){
   if(t.closest("[data-add]")){openAdd(S.loc);return}
   if(t.closest("[data-more]")){openMore();return}
   if(t.closest("[data-settings]")){openSettings();return}
+  if(t.closest("[data-tour]")){tourReplay();return}
   if(t.closest("[data-back]")){goBack();return}
   if(t.closest("[data-month]")){pickMonth();return}
   if((b=t.closest("[data-mstep]"))){setMonth(shiftMk(S.mk,+b.dataset.mstep));return}
@@ -1280,20 +1282,23 @@ function surveyStart(){
   if(TG&&TG.BackButton)TG.BackButton.hide();
   renderSurvey();
 }
+// The tour can be opened again from the menu (user 2026-11-16); a replay just closes at the end, nothing is saved.
+function tourReplay(){SVY={i:0,view:"tour",tour:0,replay:1,ask:{},text:{},asked:{}};closePanel();renderSurvey();window.scrollTo(0,0)}
+function tourClose(){SVY=null;render();window.scrollTo(0,0)}
 function svLogo(){return '<img class="lh-l" src="img/logo-h.png" alt="Кебабця"><img class="lh-d" src="img/logo-h-dark.png" alt="Кебабця">'}
 function svRoman(){return ME.survey.set==="roman"}
 function svFrame(steps,cur,head,body,foot,title,note){
   return '<div class="sv"><aside class="card sv-side">'+svLogo()+'<div><h2>'+title+'</h2><p>'+note+'</p></div>'+
   '<div class="stps">'+steps.map(function(t,k){var st=k<cur||(cur<0&&false)?"ok":k===cur?"cur":"";return '<button class="stp '+st+'" data-step="'+k+'"><span class="n">'+(k<cur?I("check"):k+1)+'</span>'+esc(t)+'</button>'}).join("")+'</div>'+
-  '<div class="grow"></div><div class="sv-note">'+I("lock")+'<div>Кабінет відкриється після опитування і короткої екскурсії. Можна закрити й продовжити пізніше.</div></div></aside>'+
+  '<div class="grow"></div><div class="sv-note">'+(SVY&&SVY.replay?I("bell")+'<div>Екскурсію можна відкрити знову будь-коли: «Як працює апка» в меню.</div>':I("lock")+'<div>Кабінет відкриється після опитування і короткої екскурсії. Можна закрити й продовжити пізніше.</div>')+'</div></aside>'+
   '<div class="sv-top"><img class="mk" src="'+LOGO_M+'" width="32" height="32" alt="Кебабця"><b>'+title+'</b></div>'+
   '<section class="card sv-main">'+head+'<div class="sv-b">'+body+'</div><div class="sv-f">'+foot+'</div></section></div>';
 }
 function svCount(len){var min=ME.survey.min,ok=len>=min;return '<span class="prog"><i style="width:'+Math.min(100,len/min*100)+'%"></i></span>'+(ok?I("check")+'Достатньо детально':'Ще мінімум '+(min-len)+' символів, напишіть детальніше')}
 function renderSurvey(){
-  var s=ME.survey,n=s.questions.length,v=SVY.view,first=esc(ME.user.name.trim().split(/\s+/)[0]);
+  var s=ME.survey&&ME.survey.questions?ME.survey:{questions:[],answers:[]},n=s.questions.length,v=SVY.view,first=esc(ME.user.name.trim().split(/\s+/)[0]);
   var steps=s.questions.map(function(q){return q.t});
-  var title=v==="tour"?"Як працює апка":"Знайомство з апкою",note=v==="tour"?"Коротка екскурсія, її не можна пропустити.":svRoman()?"Ваші відповіді стануть правилами для команди.":"Розкажіть, як ви зараз працюєте зі скаргами.";
+  var title=v==="tour"?"Як працює апка":"Знайомство з апкою",note=v==="tour"?(SVY.replay?"Як працює апка і що в ній робити.":"Коротка екскурсія, її не можна пропустити."):svRoman()?"Ваші відповіді стануть правилами для команди.":"Розкажіть, як ви зараз працюєте зі скаргами.";
   var html;
   if(v==="pick"){
     var max=s.maxLocs||4,by={};s.locations.forEach(function(l){(by[l.city]=by[l.city]||[]).push(l)});
@@ -1331,7 +1336,7 @@ function renderSurvey(){
       (i?'<button class="btn2" data-sv="prev">Назад</button>':'')+'<span class="sp">Відповідь зберігається, коли натискаєте «Далі»</span><button class="btnk btna" data-sv="next" id="svNext"'+(len<s.min?" disabled":"")+'>'+(i===n-1?"Завершити":"Далі")+I("right")+'</button>',title,note);
   }else if(v==="done"){
     html=svFrame(steps,n,"",
-      '<div class="hero"><div class="wave ok">'+I("check")+'</div><h1>Дякуємо, '+first+'! Відповіді збережено</h1><p>Лишився останній крок: коротка екскурсія по апці, 4 екрани, близько 2 хвилин. Її не можна пропустити, а після неї відкриється ваш кабінет.</p></div>'+
+      '<div class="hero"><div class="wave ok">'+I("check")+'</div><h1>Дякуємо, '+first+'! Відповіді збережено</h1><p>Лишився останній крок: коротка екскурсія по апці, '+svTour().length+' екранів, близько 3 хвилин. Її не можна пропустити, а після неї відкриється ваш кабінет.</p></div>'+
       '<div class="sv-note">'+I("lock")+'<div>Якщо закриєте апку зараз, вона почнеться з екскурсії.</div></div>',
       '<span class="sp">Відповіді можна буде доповнити пізніше</span><button class="btnk btna" data-sv="tour">До екскурсії'+I("right")+'</button>',title,note);
   }else{
@@ -1339,7 +1344,7 @@ function renderSurvey(){
     html=svFrame(T.map(function(x){return x[0]}),k,
       '<div class="sv-h"><div class="top"><span>Крок <b>'+(k+1)+'</b> з '+T.length+'</span><span class="sp"></span><span class="dots">'+T.map(function(x,j){return '<i class="'+(j<=k?"on":"")+'"></i>'}).join("")+'</span></div></div>',
       '<div class="tour-t"><span class="tic">'+I(T[k][1])+'</span><div><h1>'+T[k][2]+'</h1><p>'+T[k][3]+'</p></div></div><div class="demo">'+T[k][4]+'</div>',
-      (k?'<button class="btn2" data-sv="tback">Назад</button>':'')+'<span class="sp">Без пропуску · '+(k+1)+' з '+T.length+'</span><button class="btnk btna" data-sv="tnext">'+(k===T.length-1?"Почати роботу":"Далі")+I("right")+'</button>',title,note);
+      (k?'<button class="btn2" data-sv="tback">Назад</button>':SVY.replay?'<button class="btn2" data-sv="tclose">Закрити</button>':'')+'<span class="sp">'+(SVY.replay?"":"Без пропуску · ")+(k+1)+' з '+T.length+'</span><button class="btnk btna" data-sv="tnext">'+(k===T.length-1?(SVY.replay?"Готово":"Почати роботу"):"Далі")+I("right")+'</button>',title,note);
   }
   app.innerHTML=html;
   var pn=document.getElementById("pkName");
@@ -1355,12 +1360,19 @@ function svTour(){
   var list='<div class="dm">'+W+'<b>'+(mine?"Скарги ваших точок":"Скарги")+' · чекають рішення</b>Найстаріші зверху. Червоним позначено ті, що чекають довше 3 днів.</div>'+W+'<b>🔴 Кульпарківська · Glovo · 4 дні</b>Привезли холодний кебаб, соус протік.</div>'+W+'<b>Сихів · Google · 1 день</b>Довго чекали замовлення, 40 хвилин.</div>'+W+'<b>Огляд і Точки</b>Скарги за місяць, теми, Google-рейтинг і скарги на 1000 чеків.</div></div>';
   var hist='<div class="dm">'+W+'<b>Скарга · Glovo · 12:40</b>Привезли холодний кебаб, соус протік.</div>'+W+'<b>Рішення · 14:05</b>Подивились камери: замовлення чекало курʼєра 25 хв. Написали в підтримку Glovo, гроші повернули.</div>'+W+'<b>Результат · ✓ Вирішено</b>Гість задоволений, відповів у чаті.</div>'+W+'<b>Історія</b>Хто додав скаргу, хто і коли записав рішення, усе з часом.</div></div>';
   var rem='<div class="dm"><div class="dm-m"><b>🔴 Нова скарга · Google</b>Довго чекали замовлення, 40 хвилин.</div><div class="dm-k"><span class="w">Відкрити скаргу</span></div><div class="dm-m"><b>☀️ Ранкова зведенка</b>2 скарги чекають рішення довше доби.</div><div class="dm-m out">💬 Зауваження до апки</div></div>';
-  return [
+  var remLoc='<div class="dm"><div class="dm-m"><b>⏰ Нагадування: скаргу ще ніхто не взяв у роботу · Glovo</b>Точка: Кульпарківська<br>«Привезли холодний кебаб, соус протік.»</div><div class="dm-k"><span class="w">👀 Переглянув, беру в роботу</span><span class="w">Відкрити скаргу</span></div><div class="dm-m out">💬 Зауваження до апки</div></div>';
+  // Why the app exists and the Glovo/Bolt «беру в роботу» flow (user 2026-11-16: new admins must know why and what to do).
+  var why='<div class="dm">'+W+'<b>Скарги з усіх каналів в одному місці</b>Glovo, Bolt, Google, наш додаток, оператори, Instagram.</div>'+W+'<b>📊 Кульпарківська · жовтень</b>19 скарг · 1 скарга на 230 чеків<br>Найчастіше: холодна їжа (6), довге очікування (4)</div>'+W+'<b>Що це дає</b>Видно, на якій точці і що саме повторюється, і жодна скарга не губиться.</div></div>';
+  var take='<div class="dm"><div class="dm-m"><b>🔴 Нова скарга · Glovo</b>Точка: Кульпарківська<br>Звідки: 🤖 бот знайшов у звіті Glovo<br>«Привезли холодний кебаб, соус протік.»</div><div class="dm-k"><span class="w">👀 Переглянув, беру в роботу</span><span class="w">Відкрити скаргу</span></div><div class="dm-m"><b>✅ Ви взяли в роботу о 12:47</b>Керівники бачать у ранковому звіті, хто взяв скаргу і коли.</div></div>';
+  var T=[
+    ["Навіщо це","trend","Навіщо апка «Відгуки»","Сюди збираються всі скарги гостей по точках, з усіх каналів. Ми рахуємо, скільки скарг на кожній точці і про що вони, щоб виправляти те, що повторюється, а не гасити пожежі по одній. Ваша частина: швидко побачити скаргу і розібратися з нею.",why]];
+  if(mine)T.push(["Glovo і Bolt","check","Скарги з Glovo і Bolt приходять самі","Бот сам знаходить погані відгуки з Glovo і Bolt на ваших точках і пише вам. Прочитайте і натисніть «Переглянув, беру в роботу». Поки ніхто не натиснув, бот нагадуватиме о 10:00, 14:00 і 18:00. Рішення в апці записує комунікаційник, ви побачите його в скарзі.",take]);
+  return T.concat([
     ["Як додати скаргу","send","Як додати скаргу за 10 секунд","Побачили скаргу? Перешліть боту скриншот або текст. Бот сам визначить точку, канал і тему, а ви перевірите й натиснете «Зберегти». Якщо щось не так, виправте кнопками.",chat],
     [mine?"Скарги ваших точок":"Скарги і точки","inbox",mine?"Ви бачите тільки свої точки":"Усі скарги в одному місці",mine?"У списку «Скарги» лише точки, за які ви відповідаєте. Скарги інших точок вам не видно.":"«Скарги» показують, що чекає рішення. «Огляд» і «Точки» показують цифри за місяць по кожній точці.",list],
-    ["Рішення та історія","clock","Що зробили і чим скінчилось","Відкрийте скаргу, запишіть, що зробили, і позначте результат. Усе потрапляє в історію з часом, тож видно, хто і коли працював зі скаргою.",hist],
-    ["Нагадування і зауваження","bell","Бот нагадає, а ви можете підказати","Нові скарги приходять у бот одразу, а якщо скарга чекає довше доби, бот нагадає зранку. Якщо в апці щось незручно, натисніть у боті «Зауваження до апки» і напишіть, ми врахуємо.",rem]
-  ];
+    ["Рішення та історія","clock","Що зробили і чим скінчилось",mine?"Відкрийте скаргу: там текст гостя, скриншоти і історія з часом: хто додав скаргу, хто взяв у роботу, чим скінчилось. Рішення і результат записує комунікаційник, ви бачите їх тут же.":"Відкрийте скаргу, запишіть, що зробили, і позначте результат. Усе потрапляє в історію з часом, тож видно, хто і коли працював зі скаргою.",hist],
+    ["Нагадування і зауваження","bell","Бот нагадає, а ви можете підказати",mine?"Скарги Glovo і Bolt ваших точок бот надсилає вам одразу, а поки їх ніхто не взяв, нагадує о 10:00, 14:00 і 18:00. Якщо в апці щось незручно, натисніть у боті «Зауваження до апки» і напишіть, ми врахуємо.":"Нові скарги ваших точок приходять у бот одразу. Щоранку бот надсилає зведення: які скарги чекають рішення довше доби. Якщо в апці щось незручно, натисніть у боті «Зауваження до апки» і напишіть, ми врахуємо.",mine?remLoc:rem]
+  ]);
 }
 app.addEventListener("click",function(e){
   if(!SVY)return;
@@ -1370,13 +1382,15 @@ app.addEventListener("click",function(e){
   if(pk&&SVY.view==="pick"){var id=+pk.dataset.pk,k=SVY.locs.indexOf(id);if(k>=0)SVY.locs.splice(k,1);else SVY.locs.push(id);
     var sc=app.querySelector(".sv-b").scrollTop;renderSurvey();app.querySelector(".sv-b").scrollTop=sc;return}
   var b=e.target.closest("[data-sv]");if(!b)return;
-  var a=b.dataset.sv,n=ME.survey.questions.length;
+  var a=b.dataset.sv,n=ME.survey&&ME.survey.questions?ME.survey.questions.length:0;
   if(a==="pkgo"){pickConfirm();return}
   if(a==="begin"){SVY.view="q";SVY.i=svFirstGap();renderSurvey()}
   else if(a==="prev"){SVY.i--;renderSurvey()}
   else if(a==="tour"){SVY.view="tour";SVY.tour=0;renderSurvey()}
   else if(a==="tback"){SVY.tour--;renderSurvey()}
+  else if(a==="tclose")tourClose();
   else if(a==="tnext"){if(SVY.tour<svTour().length-1){SVY.tour++;renderSurvey();return}
+    if(SVY.replay){tourClose();return}
     busy(b,true);api("tour_done").then(function(){SVY=null;start()}).catch(function(x){busy(b,false);toast(x.message)})}
   else if(a==="next"){
     var i=SVY.i,t=(SVY.text[i]||"").trim();busy(b,true);
