@@ -431,6 +431,26 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
       return data;
     }
 
+    // ---- Google reviews (owner 2026-11-25): the team sees every review, answers in the bot, records the outcome here ----
+    case "google_list": {
+      must(isStaff(u), "Немає доступу");
+      const since = new Date(Date.now() - 60 * 86400000).toISOString();
+      const { data } = await db.from("google_reviews")
+        .select("key,location_id,rating,text,author,published_at,reply,reply_at,replied_by,complaint_id,result,note,notified_at,locations(name)")
+        .gte("published_at", since).order("published_at", { ascending: false }).limit(500);
+      // deno-lint-ignore no-explicit-any
+      return (data ?? []).map(({ locations, ...r }: any) => ({ ...r, loc: locations?.name ?? "" }));
+    }
+    case "google_save": {
+      must(isStaff(u), "Немає доступу");
+      const key = Number(p.key);
+      must(Number.isInteger(key), "Немає відгуку");
+      const { data } = await db.from("google_reviews").update({ result: String(p.result ?? "").slice(0, 200) || null, note: String(p.note ?? "").slice(0, 2000) || null })
+        .eq("key", key).select("key,result,note").maybeSingle();
+      must(data, "Відгук не знайдено");
+      return data;
+    }
+
     // ---- administrator only ----
     case "users": {
       must(u.role === "admin", "Немає доступу");

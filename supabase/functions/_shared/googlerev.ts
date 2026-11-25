@@ -11,7 +11,8 @@ export const COMPLAINT_WINDOW = 14 * DAY;
 export type ReviewIn = { ext: string; rating: number | null; text: string; author: string; at: Date | null };
 
 // Complaint id when a new one was made; null for a good, old or already known review.
-export async function googleComplaint(l: { id: number; name: string }, r: ReviewIn): Promise<number | null> {
+// `silent`: the full Google sync sends its own card for every review (greviews.ts), so no separate message.
+export async function googleComplaint(l: { id: number; name: string }, r: ReviewIn, silent = false): Promise<number | null> {
   if (!r.rating || r.rating > NEGATIVE_MAX || !r.at || Date.now() - r.at.getTime() > COMPLAINT_WINDOW) return null;
   const day = r.at.toLocaleDateString("sv-SE", { timeZone: "Europe/Kyiv" });
   const dup = await findDuplicate({ location_id: l.id, channel: "Google", happened_on: day, text: r.text, external_id: r.ext });
@@ -25,6 +26,7 @@ export async function googleComplaint(l: { id: number; name: string }, r: Review
     text: r.text || `Оцінка ${r.rating} без коментаря`, source: "google", external_id: r.ext,
   }).select("id").maybeSingle();
   if (!c) return null;
+  if (silent) return c.id;
   const msg = [
     `🔴 <b>Відгук ${r.rating} з 5 у Google</b>`,
     `${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)} · ${day.split("-").reverse().join(".")}`,
