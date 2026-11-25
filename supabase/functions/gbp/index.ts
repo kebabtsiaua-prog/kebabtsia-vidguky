@@ -51,28 +51,44 @@ async function accessToken(): Promise<string | null> {
   return (await tokenCall({ client_id: c.id, client_secret: c.secret, refresh_token: auth.refresh_token, grant_type: "refresh_token" })).access_token;
 }
 
-// Matches our locations to the Business Profiles this Google account manages, by the Place id the Places check found.
+// Matches our locations to the Business Profiles this Google account manages: by the Place id the Places check found,
+// else by the street in the address (Хуторівка's Places id differed from its profile's on 2026-11-25).
+const streetKey = (a: string) => (a.split(",")[0] ?? "").toLowerCase().replace(/^(вулиця|вул\.?|проспект|просп\.?|бульв\.?|проїзд|урочище)\s*/u, "").replace(/[\s.,«»"]+/g, " ").trim();
 async function matchLocations(token: string) {
   const { accounts = [] } = await google("https://mybusinessaccountmanagement.googleapis.com/v1/accounts", token);
-  const profiles: { gbp: string; title: string; placeId?: string }[] = [];
+  const profiles: { gbp: string; title: string; address: string; placeId?: string }[] = [];
   for (const a of accounts) {
     let page = "";
     do {
-      const d = await google(`https://mybusinessbusinessinformation.googleapis.com/v1/${a.name}/locations?readMask=name,title,metadata&pageSize=100${page ? `&pageToken=${page}` : ""}`, token);
-      for (const l of d.locations ?? []) profiles.push({ gbp: `${a.name}/${l.name}`, title: l.title, placeId: l.metadata?.placeId });
+      const d = await google(`https://mybusinessbusinessinformation.googleapis.com/v1/${a.name}/locations?readMask=name,title,metadata,storefrontAddress&pageSize=100${page ? `&pageToken=${page}` : ""}`, token);
+      for (const l of d.locations ?? []) {
+        profiles.push({ gbp: `${a.name}/${l.name}`, title: l.title, address: (l.storefrontAddress?.addressLines ?? []).join(", "), placeId: l.metadata?.placeId });
+      }
       page = d.nextPageToken ?? "";
     } while (page);
   }
-  const { data: locs } = await db.from("locations").select("id,name,google_place_id").eq("active", true).order("name");
-  const matched: string[] = [], missing: string[] = [];
+  const { data: locs } = await db.from("locations").select("id,name,google_place_id,google_address").eq("active", true).order("name");
+  const matched: string[] = [], missing: string[] = [], used = new Set<string>();
+  const pending = [];
   for (const l of locs ?? []) {
     const p = profiles.find((x) => x.placeId && x.placeId === l.google_place_id);
     if (p) {
+      used.add(p.gbp);
+      await db.from("locations").update({ gbp_name: p.gbp }).eq("id", l.id);
+      matched.push(l.name);
+    } else pending.push(l);
+  }
+  for (const l of pending) {
+    const key = streetKey(l.google_address ?? "");
+    const p = key.length > 3 ? profiles.find((x) => !used.has(x.gbp) && streetKey(x.address).includes(key.split(" ")[0])) : undefined;
+    if (p) {
+      used.add(p.gbp);
       await db.from("locations").update({ gbp_name: p.gbp }).eq("id", l.id);
       matched.push(l.name);
     } else missing.push(l.name);
   }
-  return { profiles: profiles.length, matched, missing };
+  const extra = profiles.filter((x) => !used.has(x.gbp)).map((x) => `${x.title} · ${x.address}`);
+  return { profiles: profiles.length, matched, missing, extra };
 }
 
 async function botLink() {
@@ -218,6 +234,12 @@ Deno.serve(async (req) => {
       return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${q}`, 302);
     }
     if (params.has("sync")) return json(await sync());
+    // ?match=1: match locations again and list the account's profiles that are not ours (names and addresses only).
+    if (params.has("match")) {
+      const token = await accessToken();
+      if (!token) return json({ ok: false, reason: "Google ще не підключено" });
+      return json(await matchLocations(token));
+    }
     // Plain GET: is it connected, how many locations are matched (no secrets).
     const { data: auth } = await db.from("google_auth").select("connected_at,last_sync,last_error").maybeSingle();
     const { count } = await db.from("locations").select("id", { count: "exact", head: true }).eq("active", true).not("gbp_name", "is", null);
