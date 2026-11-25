@@ -12,3 +12,6 @@ verify_jwt = false
 
 [functions.poster]
 verify_jwt = false
+
+[functions.gbp]
+verify_jwt = false

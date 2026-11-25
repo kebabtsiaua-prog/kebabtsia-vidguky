@@ -3,9 +3,8 @@
 // admins last month's summary. The same call returns the reviews Google shows for the place (up to 5): a new one with
 // 1–3 stars becomes a complaint and a direct message to the team, like a low app rating.
 // Needs GOOGLE_MAPS_API_KEY in Supabase secrets; without it does nothing.
-import { db, itemUrl, kyivToday, tg } from "../_shared/common.ts";
-import { NEGATIVE_MAX, recipients } from "../_shared/uployal.ts";
-import { alias, findDuplicate } from "../_shared/dedupe.ts";
+import { db, kyivToday, tg } from "../_shared/common.ts";
+import { googleComplaint } from "../_shared/googlerev.ts";
 
 const PLACES = "https://places.googleapis.com/v1";
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
@@ -108,15 +107,10 @@ type Review = {
   name: string; rating?: number; publishTime?: string;
   text?: { text?: string }; originalText?: { text?: string }; authorAttribution?: { displayName?: string };
 };
-const escH = (s: string) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]!));
-const DAY = 86400000;
-
-// Records reviews not seen before. A low one published in the last 14 days becomes a complaint, unless the team
-// already typed it in by hand (then the hand-made one gets the review's id). Until 2026-11-11 the first check of a
-// place took only the last 2 days, which skipped 4 low October reviews.
+// Records reviews not seen before; a low recent one becomes a complaint (googleComplaint). Until 2026-11-11 the first
+// check of a place took only the last 2 days, which skipped 4 low October reviews.
 async function takeReviews(l: Loc, reviews: Review[]) {
   if (!reviews.length) return 0;
-  const window = 14 * DAY;
   let made = 0;
   for (const r of reviews) {
     const text = (r.originalText?.text || r.text?.text || "").trim();
@@ -126,35 +120,7 @@ async function takeReviews(l: Loc, reviews: Review[]) {
     });
     if (error) continue; // seen before
     const at = r.publishTime ? new Date(r.publishTime) : null;
-    if (!r.rating || r.rating > NEGATIVE_MAX || !at || Date.now() - at.getTime() > window) continue;
-    const day = at.toLocaleDateString("sv-SE", { timeZone: "Europe/Kyiv" });
-    const ext = `google:${r.name}`;
-    const dup = await findDuplicate({ location_id: l.id, channel: "Google", happened_on: day, text, external_id: ext });
-    if (dup) {
-      await alias(ext, dup);
-      await db.from("complaints").update({ rating: r.rating }).eq("id", dup).is("rating", null);
-      continue;
-    }
-    const { data: c } = await db.from("complaints").insert({
-      location_id: l.id, channel: "Google", happened_on: day, rating: r.rating,
-      text: text || `Оцінка ${r.rating} без коментаря`, source: "google", external_id: ext,
-    }).select("id").maybeSingle();
-    if (!c) continue;
-    made++;
-    const msg = [
-      `🔴 <b>Відгук ${r.rating} з 5 у Google</b>`,
-      `${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)} · ${day.split("-").reverse().join(".")}`,
-      "",
-      `<b>Точка:</b> ${escH(l.name)}`,
-    ];
-    if (author) msg.push(`<b>Гість:</b> ${escH(author)}`);
-    msg.push(text ? `<blockquote>${escH(text)}</blockquote>` : "<i>Без тексту, лише оцінка.</i>", "<i>Дайте відповідь на відгук у Google і запишіть рішення в апці.</i>");
-    for (const u of await recipients()) {
-      await tg("sendMessage", {
-        chat_id: u.tg_id, parse_mode: "HTML", text: msg.join("\n"),
-        reply_markup: { inline_keyboard: [[{ text: "Відкрити скаргу", web_app: { url: itemUrl(c.id) } }]] },
-      }).catch(console.error);
-    }
+    if (await googleComplaint(l, { ext: `google:${r.name}`, rating: r.rating ?? null, text, author, at })) made++;
   }
   return made;
 }
@@ -185,6 +151,9 @@ Deno.serve(async (req) => {
   const doneIds = new Set(params.has("reviews") ? [] : (done ?? []).map((d) => d.location_id));
   const errors: string[] = [];
   let taken = 0, complaints = 0;
+  // Once the Business Profile sync runs (gbp), it sees every review; the 5 from Places would only repeat them.
+  const { data: auth } = await db.from("google_auth").select("last_sync,last_error").maybeSingle();
+  const gbpLive = !!auth?.last_sync && !auth.last_error && Date.now() - Date.parse(auth.last_sync) < 2 * 86400000;
   for (const l of locs.filter((l) => !doneIds.has(l.id))) {
     try {
       const used = new Set(locs.filter((o) => o.id !== l.id && o.google_place_id).map((o) => o.google_place_id!));
@@ -200,7 +169,7 @@ Deno.serve(async (req) => {
       });
       if (error) throw new Error(error.message);
       taken++;
-      complaints += await takeReviews(l, p.reviews ?? []);
+      if (!gbpLive) complaints += await takeReviews(l, p.reviews ?? []);
     } catch (e) {
       errors.push(`${l.name}: ${(e as Error).message}`);
     }

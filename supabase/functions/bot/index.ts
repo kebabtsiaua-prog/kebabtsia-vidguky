@@ -14,6 +14,7 @@ import { recipients } from "../_shared/uployal.ts";
 import { type BoltRow, importBolt, parseBoltReport } from "../_shared/bolt.ts";
 import { alertTake, dailyReport, type ImportResult, importGlovo, isGlovoReport, remindGlovo, remindTake, take, takeButtonFor } from "../_shared/glovo.ts";
 import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, ownerId, setOf, type SurveyUser } from "../_shared/survey.ts";
+import { connectLink } from "../_shared/googlerev.ts";
 
 type Draft = {
   loc: number | null;
@@ -204,6 +205,17 @@ async function onMessage(msg: any) {
       ? { chat_id: chat, parse_mode: "HTML", text: "🧩 Ключ для розширення «Кебабця: звіт Glovo»:\n\n" +
         `<code>${await glovoKey(u.tg_id)}</code>\n\nНатисніть на ключ, щоб скопіювати, і вставте його в розширення. Нікому його не пересилайте.` }
       : { chat_id: chat, text: "Ключ для розширення Glovo видається лише власнику." });
+    return;
+  }
+
+  // Connects the Google Business Profile once (all reviews + replies). Only an admin; the link works 30 minutes.
+  if (text === "/google") {
+    await tg("sendMessage", u.role === "admin"
+      ? { chat_id: chat, parse_mode: "HTML",
+        text: "🔗 <b>Підключення Google</b>\n\nНатисніть кнопку і увійдіть у Google під поштою, де видно всі точки «Кебабця». " +
+          "Пароль вводите лише на сторінці Google. Потім натисніть «Дозволити». Кнопка працює 30 хвилин.",
+        reply_markup: { inline_keyboard: [[{ text: "Підключити Google", url: await connectLink(u.tg_id) }]] } }
+      : { chat_id: chat, text: "Google підключає власник." });
     return;
   }
 

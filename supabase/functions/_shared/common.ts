@@ -108,6 +108,11 @@ export async function glovoKey(tgId: number): Promise<string> {
   return `${tgId}.${hex(await hmac(new TextEncoder().encode(`kebabtsia-glovo:${tgId}`), botToken())).slice(0, 32)}`;
 }
 
+// Signs a short value with the bot token, so a link can prove it came from the bot without storing anything.
+export async function sign(label: string, data: string): Promise<string> {
+  return hex(await hmac(new TextEncoder().encode(`kebabtsia-${label}:${data}`), botToken())).slice(0, 32);
+}
+
 // Checks Telegram Mini App initData (https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app).
 export async function telegramUser(initData: string): Promise<{ id: number; first_name: string; last_name?: string; username?: string } | null> {
   if (!initData) return null;
