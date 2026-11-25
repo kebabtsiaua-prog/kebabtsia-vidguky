@@ -17,6 +17,7 @@ import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, ownerId, setOf, type Sur
 import { connectLink } from "../_shared/googlerev.ts";
 import { onReviewButton, onReviewText } from "../_shared/greplybot.ts";
 import { remindGoogle } from "../_shared/greviews.ts";
+import { ackGoogleIntro, sendGoogleIntro } from "../_shared/gintro.ts";
 
 type Draft = {
   loc: number | null;
@@ -305,6 +306,7 @@ async function onCallback(cb: any) {
     return;
   }
   if (kind === "gr") return await onReviewButton(cb, chat, msgId, u, id, arg);
+  if (kind === "gi") return await ackGoogleIntro(cb, chat, msgId, u, tellOwner);
   if (kind === "tk") {
     const note = await take(id, u);
     await tg("answerCallbackQuery", { callback_query_id: cb.id, text: note });
@@ -715,8 +717,9 @@ Deno.serve(async (req) => {
       if (new URL(req.url).searchParams.has("glovo")) return Response.json(await remindGlovo(kyivToday()));
       const slot = new URL(req.url).searchParams.get("take_remind");
       if (slot && /^(10|14|18)$/.test(slot)) {
+        const intro = await sendGoogleIntro(kyivToday(), slot).catch((e) => ({ error: (e as Error).message }));
         const google = await remindGoogle(kyivToday(), slot).catch((e) => ({ error: (e as Error).message }));
-        return Response.json({ ...await remindTake(kyivToday(), slot), google });
+        return Response.json({ ...await remindTake(kyivToday(), slot), google, intro });
       }
       if (new URL(req.url).searchParams.has("report")) return Response.json({ ok: true, reported: await morningReport(kyivToday()) });
       const key = new URL(req.url).searchParams.get("announce");
