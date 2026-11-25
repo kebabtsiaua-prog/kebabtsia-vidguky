@@ -56,13 +56,16 @@ async function accessToken(): Promise<string | null> {
 const streetKey = (a: string) => (a.split(",")[0] ?? "").toLowerCase().replace(/^(вулиця|вул\.?|проспект|просп\.?|бульв\.?|проїзд|урочище)\s*/u, "").replace(/[\s.,«»"]+/g, " ").trim();
 async function matchLocations(token: string) {
   const { accounts = [] } = await google("https://mybusinessaccountmanagement.googleapis.com/v1/accounts", token);
-  const profiles: { gbp: string; title: string; address: string; placeId?: string }[] = [];
+  const profiles: { gbp: string; title: string; address: string; city: string; status: string; placeId?: string }[] = [];
   for (const a of accounts) {
     let page = "";
     do {
-      const d = await google(`https://mybusinessbusinessinformation.googleapis.com/v1/${a.name}/locations?readMask=name,title,metadata,storefrontAddress&pageSize=100${page ? `&pageToken=${page}` : ""}`, token);
+      const d = await google(`https://mybusinessbusinessinformation.googleapis.com/v1/${a.name}/locations?readMask=name,title,metadata,storefrontAddress,openInfo&pageSize=100${page ? `&pageToken=${page}` : ""}`, token);
       for (const l of d.locations ?? []) {
-        profiles.push({ gbp: `${a.name}/${l.name}`, title: l.title, address: (l.storefrontAddress?.addressLines ?? []).join(", "), placeId: l.metadata?.placeId });
+        profiles.push({
+          gbp: `${a.name}/${l.name}`, title: l.title, address: (l.storefrontAddress?.addressLines ?? []).join(", "),
+          city: l.storefrontAddress?.locality ?? "", status: l.openInfo?.status ?? "", placeId: l.metadata?.placeId,
+        });
       }
       page = d.nextPageToken ?? "";
     } while (page);
@@ -87,7 +90,7 @@ async function matchLocations(token: string) {
       matched.push(l.name);
     } else missing.push(l.name);
   }
-  const extra = profiles.filter((x) => !used.has(x.gbp)).map((x) => `${x.title} · ${x.address}`);
+  const extra = profiles.filter((x) => !used.has(x.gbp)).map((x) => ({ title: x.title, city: x.city, address: x.address, status: x.status, gbp: x.gbp, placeId: x.placeId }));
   return { profiles: profiles.length, matched, missing, extra };
 }
 
