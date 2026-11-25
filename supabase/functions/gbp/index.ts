@@ -9,16 +9,12 @@
 // check already saved is recognised by author and time, so nothing is counted or reported twice.
 import { db, kyivToday, sign, tg } from "../_shared/common.ts";
 import { googleComplaint } from "../_shared/googlerev.ts";
+import { accessToken, google, type GRow, notifyReview, oauthClient as client, refreshCards, tokenCall } from "../_shared/greviews.ts";
 
 const SELF = `${Deno.env.get("SUPABASE_URL")}/functions/v1/gbp`;
 const SCOPE = "https://www.googleapis.com/auth/business.manage";
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 const DAY = 86400000;
-
-function client() {
-  const id = Deno.env.get("GOOGLE_OAUTH_CLIENT_ID")?.trim(), secret = Deno.env.get("GOOGLE_OAUTH_CLIENT_SECRET")?.trim();
-  return id && secret ? { id, secret } : null;
-}
 
 // The state in a connect link the bot gave an admin (googlerev.ts connectLink), valid for 30 minutes.
 async function checkState(state: string | null): Promise<number | null> {
@@ -27,28 +23,6 @@ async function checkState(state: string | null): Promise<number | null> {
   if (sig !== await sign("google", `${id}.${exp}`)) return null;
   const { data: u } = await db.from("users").select("tg_id").eq("tg_id", Number(id)).eq("role", "admin").eq("active", true).maybeSingle();
   return u ? Number(id) : null;
-}
-
-async function google(url: string, token: string, init: RequestInit = {}) {
-  const res = await fetch(url, { ...init, headers: { authorization: `Bearer ${token}`, "content-type": "application/json", ...init.headers } });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`Google ${res.status}: ${data?.error?.message ?? res.statusText}`);
-  return data;
-}
-
-async function tokenCall(body: Record<string, string>) {
-  const res = await fetch("https://oauth2.googleapis.com/token", { method: "POST", body: new URLSearchParams(body) });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(`Google вхід: ${data.error_description ?? data.error ?? res.status}`);
-  return data as { access_token: string; refresh_token?: string };
-}
-
-// A fresh access token from the stored refresh token; null when Google is not connected.
-async function accessToken(): Promise<string | null> {
-  const c = client();
-  const { data: auth } = await db.from("google_auth").select("refresh_token").maybeSingle();
-  if (!c || !auth) return null;
-  return (await tokenCall({ client_id: c.id, client_secret: c.secret, refresh_token: auth.refresh_token, grant_type: "refresh_token" })).access_token;
 }
 
 // Matches our locations to the Business Profiles this Google account manages: by the Place id the Places check found,
@@ -148,7 +122,7 @@ type Loc = { id: number; name: string; gbp_name: string; gbp_synced_at: string |
 // One location: pages newest-first until reviews older than the last sync (all pages the first time).
 async function syncLocation(token: string, l: Loc, deadline: number) {
   const since = l.gbp_synced_at ? Date.parse(l.gbp_synced_at) - DAY : 0;
-  const { data: known } = await db.from("google_reviews").select("id,gbp_name,author,published_at,updated_at").eq("location_id", l.id);
+  const { data: known } = await db.from("google_reviews").select("id,key,location_id,rating,text,author,published_at,gbp_name,reply,reply_at,replied_by,complaint_id,tg_msgs,updated_at").eq("location_id", l.id);
   const byName = new Map((known ?? []).filter((k) => k.gbp_name).map((k) => [k.gbp_name, k]));
   const placesOnly = (known ?? []).filter((k) => !k.gbp_name);
   const started = new Date().toISOString();
@@ -168,7 +142,12 @@ async function syncLocation(token: string, l: Loc, deadline: number) {
       const seen = byName.get(r.name);
       if (seen) {
         if (!seen.updated_at || Date.parse(seen.updated_at) !== Date.parse(r.updateTime ?? "")) {
-          await db.from("google_reviews").update(row).eq("id", seen.id);
+          // A reply typed in Google itself (not from the bot) has no author on our side.
+          const fromBot = seen.reply && row.reply === seen.reply;
+          await db.from("google_reviews").update({ ...row, replied_by: fromBot ? seen.replied_by : null }).eq("id", seen.id);
+          if (row.reply !== seen.reply && seen.tg_msgs?.length) {
+            await refreshCards({ ...(seen as GRow), ...row, replied_by: fromBot ? seen.replied_by : null });
+          }
         }
         continue;
       }
@@ -183,9 +162,16 @@ async function syncLocation(token: string, l: Loc, deadline: number) {
       }
       const { error } = await db.from("google_reviews").insert({ id: r.name, ...row });
       if (error) continue;
-      byName.set(r.name, { id: r.name, ...row });
+      byName.set(r.name, { ...row, id: r.name, key: 0, replied_by: null, complaint_id: null, tg_msgs: [] });
       added++;
-      if (await googleComplaint(l, { ext: `google:${r.name}`, rating: row.rating, text: row.text, author: row.author, at: r.createTime ? new Date(r.createTime) : null })) complaints++;
+      // After the first full read of a location, every new review is a card in the bot (owner 2026-11-25).
+      const live = !!l.gbp_synced_at;
+      const cid = await googleComplaint(l, { ext: `google:${r.name}`, rating: row.rating, text: row.text, author: row.author, at: r.createTime ? new Date(r.createTime) : null }, live);
+      if (cid) {
+        complaints++;
+        await db.from("google_reviews").update({ complaint_id: cid }).eq("id", r.name);
+      }
+      if (live && !row.reply) await notifyReview(r.name);
     }
     const oldest = reviews.at(-1)?.updateTime;
     page = oldest && Date.parse(oldest) < since ? "" : d.nextPageToken ?? "";

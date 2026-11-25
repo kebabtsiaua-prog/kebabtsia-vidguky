@@ -15,6 +15,8 @@ import { type BoltRow, importBolt, parseBoltReport } from "../_shared/bolt.ts";
 import { alertTake, dailyReport, type ImportResult, importGlovo, isGlovoReport, remindGlovo, remindTake, take, takeButtonFor } from "../_shared/glovo.ts";
 import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, ownerId, setOf, type SurveyUser } from "../_shared/survey.ts";
 import { connectLink } from "../_shared/googlerev.ts";
+import { onReviewButton, onReviewText } from "../_shared/greplybot.ts";
+import { remindGoogle } from "../_shared/greviews.ts";
 
 type Draft = {
   loc: number | null;
@@ -177,6 +179,9 @@ async function onMessage(msg: any) {
     }
     return;
   }
+  // A reply to a Google review, typed after «✍️ Відповісти».
+  if (text && !msg.photo && !text.startsWith("/") && await onReviewText(chat, u, text)) return;
+
   // Survey not passed yet: complaints wait until the cabinet opens (owner 2026-10-24).
   if (locked(su) && setOf(su) !== "none") {
     await tg("sendMessage", {
@@ -299,6 +304,7 @@ async function onCallback(cb: any) {
     await tg("editMessageText", { chat_id: chat, message_id: msgId, text: `🚫 Доступ прибрано: ${x?.name ?? ""}. Ця людина більше не бачить апку.` });
     return;
   }
+  if (kind === "gr") return await onReviewButton(cb, chat, msgId, u, id, arg);
   if (kind === "tk") {
     const note = await take(id, u);
     await tg("answerCallbackQuery", { callback_query_id: cb.id, text: note });
@@ -708,7 +714,10 @@ Deno.serve(async (req) => {
       if (new URL(req.url).searchParams.has("sheet")) return Response.json(await syncSheet());
       if (new URL(req.url).searchParams.has("glovo")) return Response.json(await remindGlovo(kyivToday()));
       const slot = new URL(req.url).searchParams.get("take_remind");
-      if (slot && /^(10|14|18)$/.test(slot)) return Response.json(await remindTake(kyivToday(), slot));
+      if (slot && /^(10|14|18)$/.test(slot)) {
+        const google = await remindGoogle(kyivToday(), slot).catch((e) => ({ error: (e as Error).message }));
+        return Response.json({ ...await remindTake(kyivToday(), slot), google });
+      }
       if (new URL(req.url).searchParams.has("report")) return Response.json({ ok: true, reported: await morningReport(kyivToday()) });
       const key = new URL(req.url).searchParams.get("announce");
       if (key) return Response.json(await announce(key));

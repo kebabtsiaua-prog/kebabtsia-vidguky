@@ -598,6 +598,7 @@ var ICONS={
  users:'<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M16.5 14c2.2.2 3.6 1.7 4 4"/>',
  receipt:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
  check:'<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+ star:'<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
  lock:'<rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/>',
  mic:'<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>',
  pen:'<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
@@ -757,6 +758,7 @@ function tabsFor(){
   if(oneLoc())return [["loc","Точка","pin"],["queue","Скарги","inbox"]];
   if(isLocAdmin())return [["locs","Мої точки","pin"],["queue","Скарги","inbox"]];
   var t=[["home","Огляд","grid"],["queue","Скарги","inbox"],["locs","Точки","pin"]];
+  if(isStaff())t.push(["google","Google відгуки","star"]);
   if(isStaff())t.push(["collab","Співпраці","handshake"]);
   return t;
 }
@@ -934,6 +936,45 @@ function renderCollab(){
     '<dl><div><dt>Від нас</dt><dd>'+(esc(c.ours)||"—")+'</dd></div><div><dt>Від партнера</dt><dd>'+(esc(c.theirs)||"—")+'</dd></div><div><dt>Плюси</dt><dd>'+(esc(c.pros)||"—")+'</dd></div><div><dt>Мінуси</dt><dd>'+(esc(c.cons)||"—")+'</dd></div></dl>'+
     (c.result?'<span class="chip good">'+esc(c.result)+'</span>':'<span class="chip flat">результат не записаний</span>')+'</div>'}).join("")+'</div>';
   return h;
+}
+
+// ================= GOOGLE ВІДГУКИ =================
+// Every Google review of the last 60 days. Лена й Аня answer in the bot; here they see what is left and record the outcome.
+var greviews=null,GSEG="wait";
+var GRESULTS=["Відповіли на відгук","Гість написав, у процесі","Владнано","Відповідь не потрібна"];
+function gWaiting(r){return !r.reply&&r.notified_at}
+function gAgo(iso){if(!iso)return "";var h=Math.round((Date.now()-Date.parse(iso))/36e5);return h<1?"щойно":h<24?h+" год тому":Math.round(h/24)+" дн тому"}
+function gRow(r){
+  return '<button class="q" data-grev="'+r.key+'"><span class="b"><span class="t1"><b>'+esc(shortLoc(r.loc))+'</b><span style="color:#F5A524;letter-spacing:1px">'+"★".repeat(r.rating||0)+'</span></span>'+
+    '<span class="tx">'+(r.text?esc(r.text):'<i class="muted">Без тексту, лише оцінка</i>')+'</span>'+
+    '<span class="t1" style="margin-top:3px"><span style="margin-left:0">'+esc(r.author||"Гість")+' · '+gAgo(r.published_at)+'</span>'+
+    (r.complaint_id?'<span class="chip warn" style="margin-left:auto">Скарга №'+r.complaint_id+'</span>':r.reply?'<span class="chip good" style="margin-left:auto">✓ відповіли</span>':'')+'</span></span></button>'}
+function renderGoogle(){
+  var h=head("Google відгуки","Усі відгуки за 60 днів. Відповідають у боті, тут видно, що лишилось, і чим закінчилось",null,null,true);
+  if(!greviews){api("google_list").then(function(x){greviews=x;if(S.tab==="google"&&!S.loc)render()}).catch(showError);return h+'<div class="card"><div class="empty">Завантаження…</div></div>'}
+  var wait=greviews.filter(gWaiting),done=greviews.filter(function(r){return r.reply});
+  var list=GSEG==="wait"?wait:GSEG==="done"?done:greviews;
+  h+='<div class="card"><div class="tb"><div class="seg"><button data-gseg="wait" class="'+(GSEG==="wait"?"on":"")+'">Без відповіді <i>'+wait.length+'</i></button><button data-gseg="done" class="'+(GSEG==="done"?"on":"")+'">Відповіли <i>'+done.length+'</i></button><button data-gseg="all" class="'+(GSEG==="all"?"on":"")+'">Усі <i>'+greviews.length+'</i></button></div></div>'+
+    (list.length?'<div class="list">'+list.map(gRow).join("")+'</div>':'<div class="empty">'+(GSEG==="wait"?"На всі нові відгуки вже відповіли":"Відгуків немає")+'</div>')+
+    '<div class="tfoot"><span>Нові відгуки приходять у бот кожні 10 хвилин</span><span>'+list.length+'</span></div></div>';
+  return h;
+}
+function openGReview(key){
+  var r=(greviews||[]).filter(function(x){return x.key===key})[0];if(!r)return;
+  var st={result:r.result||(r.reply?GRESULTS[0]:"")};
+  var body='<div class="quote">'+(r.text?esc(r.text):'<i class="muted">Без тексту, лише оцінка</i>')+'</div>'+
+    '<div class="muted" style="font-size:13px">'+stars(r.rating)+' · '+esc(r.author||"Гість")+' · '+gAgo(r.published_at)+'</div>'+
+    (r.reply?'<div><div class="lbl">Відповідь у Google'+(r.replied_by?' · '+esc(r.replied_by):"")+'</div><div class="quote" style="border-left:3px solid var(--good)">'+esc(r.reply)+'</div></div>':'<div class="muted" style="font-size:13px">Ще без відповіді. Відповісти можна в боті кнопкою «✍️ Відповісти».</div>')+
+    (r.complaint_id?'<button class="btn2" data-gitem="'+r.complaint_id+'">Відкрити скаргу №'+r.complaint_id+I("right")+'</button>':"")+
+    '<div><div class="lbl">Чим закінчилось</div><button class="btn2 flt wide" id="gres" style="justify-content:space-between;width:100%"><b>'+esc(st.result||"Не вибрано")+'</b>'+I("down")+'</button></div>'+
+    '<div><div class="lbl">Нотатка</div><textarea id="gnote" placeholder="Наприклад: гість написав у Direct, дали промокод">'+esc(r.note)+'</textarea></div>';
+  openPanel({kind:"drawer",id:"Google · "+esc(shortLoc(r.loc)),title:r.rating?r.rating+" з 5":"Відгук",body:'<div style="display:flex;flex-direction:column;gap:12px">'+body+'</div>',
+    foot:'<span class="sp"></span><button class="btn2" data-close2>Закрити</button><button class="btnk" id="gsave">Зберегти</button>',mount:function(el){
+    el.querySelector("[data-close2]").addEventListener("click",closePanel);
+    var gi=el.querySelector("[data-gitem]");if(gi)gi.addEventListener("click",function(){var id=+gi.dataset.gitem;closeAll();openItem(id)});
+    el.querySelector("#gres").addEventListener("click",function(){var b=this;pickList("Чим закінчилось",GRESULTS,st.result||null,function(v){st.result=v||"";b.querySelector("b").textContent=v||"Не вибрано"},"Не вибрано")});
+    el.querySelector("#gsave").addEventListener("click",function(){var btn=this,note=el.querySelector("#gnote").value.trim();busy(btn,true);
+      api("google_save",{key:r.key,result:st.result,note:note}).then(function(x){r.result=x.result;r.note=x.note;closePanel();render();toast("Збережено")}).catch(function(e){busy(btn,false);toast(e.message)})})}});
 }
 
 // ================= overlays =================
@@ -1236,6 +1277,8 @@ app.addEventListener("click",function(e){
   if((b=t.closest("[data-mstep]"))){setMonth(shiftMk(S.mk,+b.dataset.mstep));return}
   if((b=t.closest("[data-export]"))){sendExport(b);return}
   if(t.closest("[data-collab-add]")){openCollabAdd();return}
+  if((b=t.closest("[data-gseg]"))){GSEG=b.dataset.gseg;render();return}
+  if((b=t.closest("[data-grev]"))){openGReview(+b.dataset.grev);return}
   if((b=t.closest("[data-golist]"))){S.tab="queue";S.loc=null;S.q={st:b.dataset.golist,loc:null,ch:null,text:""};render();window.scrollTo(0,0);return}
   if((b=t.closest("[data-ch]"))){S.tab="queue";S.loc=null;S.q={st:"all",loc:null,ch:b.dataset.ch,text:""};render();window.scrollTo(0,0);return}
   if((b=t.closest("[data-topic]"))){S.tab="queue";S.loc=null;S.q={st:"all",loc:null,ch:null,topic:b.dataset.topic,text:""};render();window.scrollTo(0,0);return}
@@ -1259,7 +1302,7 @@ app.addEventListener("input",function(e){
 
 function render(){
   if(oneLoc()&&!S.loc&&S.tab!=="queue"){S.tab="loc";S.loc=LOCS[0]}
-  var page=S.loc?renderCab():({home:renderHome,queue:renderQueue,locs:renderLocs,collab:renderCollab})[S.tab]();
+  var page=S.loc?renderCab():({home:renderHome,queue:renderQueue,locs:renderLocs,collab:renderCollab,google:renderGoogle})[S.tab]();
   app.innerHTML='<div class="shell">'+side()+'<main class="main">'+page+'</main></div>'+tabbar();
   if(TG&&TG.BackButton){if(S.loc&&!oneLoc())TG.BackButton.show();else TG.BackButton.hide()}
 }
