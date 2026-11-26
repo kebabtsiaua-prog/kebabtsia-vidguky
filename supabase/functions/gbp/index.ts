@@ -223,6 +223,17 @@ Deno.serve(async (req) => {
       return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${q}`, 302);
     }
     if (params.has("sync")) return json(await sync());
+    // ?catchup=1 (once per day): cards for the unanswered reviews of the last 3 days that came in before the cards
+    // existed (owner 2026-11-26: Аня had nothing to answer from the bot on the first morning).
+    if (params.has("catchup")) {
+      const { error: dup } = await db.from("bot_announcements").insert({ key: `google-catchup-${kyivToday()}`, info: {} });
+      if (dup) return json({ ok: true, sent: 0, reason: "already done today" });
+      const { data } = await db.from("google_reviews").select("id").is("reply", null).is("notified_at", null)
+        .gt("published_at", new Date(Date.now() - 3 * 86400000).toISOString()).order("published_at", { ascending: true }).limit(10);
+      let cards = 0;
+      for (const r of data ?? []) cards += await notifyReview(r.id);
+      return json({ ok: true, reviews: data?.length ?? 0, cards });
+    }
     // ?match=1: match locations again and list the account's profiles that are not ours (names and addresses only).
     if (params.has("match")) {
       const token = await accessToken();
