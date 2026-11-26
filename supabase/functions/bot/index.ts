@@ -17,7 +17,7 @@ import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, ownerId, setOf, type Sur
 import { connectLink } from "../_shared/googlerev.ts";
 import { onReviewButton, onReviewText } from "../_shared/greplybot.ts";
 import { remindGoogle } from "../_shared/greviews.ts";
-import { ackGoogleIntro, sendGoogleHowto, sendGoogleIntro } from "../_shared/gintro.ts";
+import { ackGoogleIntro, onBacklogTake, sendBacklogPick, sendGoogleHowto, sendGoogleIntro } from "../_shared/gintro.ts";
 
 type Draft = {
   loc: number | null;
@@ -307,6 +307,7 @@ async function onCallback(cb: any) {
   }
   if (kind === "gr") return await onReviewButton(cb, chat, msgId, u, id, arg);
   if (kind === "gi") return await ackGoogleIntro(cb, chat, msgId, u, tellOwner);
+  if (kind === "gt") return await onBacklogTake(cb, chat, msgId, u, kyivToday(), tellOwner);
   if (kind === "tk") {
     const note = await take(id, u);
     await tg("answerCallbackQuery", { callback_query_id: cb.id, text: note });
@@ -723,6 +724,11 @@ Deno.serve(async (req) => {
       }
       if (new URL(req.url).searchParams.has("report")) return Response.json({ ok: true, reported: await morningReport(kyivToday()) });
       if (new URL(req.url).searchParams.has("google_howto")) return Response.json(await sendGoogleHowto());
+      if (new URL(req.url).searchParams.has("google_pick")) {
+        const { count } = await db.from("google_reviews").select("key", { count: "exact", head: true }).is("reply", null)
+          .gt("published_at", new Date(Date.now() - 7 * 86400000).toISOString());
+        return Response.json(await sendBacklogPick(kyivToday(), count ?? 0));
+      }
       const key = new URL(req.url).searchParams.get("announce");
       if (key) return Response.json(await announce(key));
       return await setup(req);

@@ -66,3 +66,55 @@ export async function sendGoogleHowto() {
   }
   return { sent };
 }
+
+// 26.11 (owner): the girls pick who closes the week's backlog today. The first to press «Я беру сьогодні» takes it;
+// the other one and the owner are told, and today's Google reminders go only to her.
+export const takerKey = (day: string) => `google-backlog-${day}`;
+export async function googleTaker(day: string): Promise<number | null> {
+  const { data } = await db.from("bot_announcements").select("info").eq("key", takerKey(day)).maybeSingle();
+  return (data?.info as { tg_id?: number } | null)?.tg_id ?? null;
+}
+
+export async function sendBacklogPick(day: string, waiting: number) {
+  if (await googleTaker(day)) return { sent: 0, reason: "already taken" };
+  let sent = 0;
+  for (const u of await recipients()) {
+    const { error: dup } = await db.from("bot_announcements").insert({ key: `google-backlog-ask-${u.tg_id}-${day}`, info: {} });
+    if (dup) continue;
+    const r = await tg("sendMessage", {
+      chat_id: u.tg_id, parse_mode: "HTML",
+      text: `🙋 <b>Хто сьогодні закриває відгуки Google?</b>\n\nЗа тиждень без відповіді <b>${waiting}</b>. Домовтеся між собою, і та, хто бере, натисніть кнопку. Відгуки й нагадування сьогодні підуть тільки їй.`,
+      reply_markup: { inline_keyboard: [[{ text: "🙋 Я беру сьогодні", callback_data: "gt:0:take" }]] },
+    }).catch(console.error);
+    if (r?.ok) {
+      sent++;
+      await db.from("bot_announcements").update({ info: { chat_id: u.tg_id, message_id: r.result.message_id } }).eq("key", `google-backlog-ask-${u.tg_id}-${day}`);
+    }
+  }
+  return { sent };
+}
+
+export async function onBacklogTake(cb: { id: string }, chat: number, msgId: number, u: User, day: string, tellOwner: (t: string, about: number) => Promise<void>) {
+  const { error } = await db.from("bot_announcements").insert({ key: takerKey(day), info: { tg_id: u.tg_id, name: u.name, at: new Date().toISOString() } });
+  if (error) {
+    const { data } = await db.from("bot_announcements").select("info").eq("key", takerKey(day)).maybeSingle();
+    const who = (data?.info as { name?: string } | null)?.name ?? "колега";
+    await tg("answerCallbackQuery", { callback_query_id: cb.id, text: `Сьогодні вже взяла ${who}` });
+    return;
+  }
+  await tg("answerCallbackQuery", { callback_query_id: cb.id, text: "Записали!" });
+  await tg("editMessageText", {
+    chat_id: chat, message_id: msgId, parse_mode: "HTML",
+    text: "✅ <b>Сьогодні відгуки Google на вас.</b> Відкрийте «Google відгуки» → «Без відповіді» і відповідайте по черзі. Нагадування сьогодні приходитимуть тільки вам.",
+    reply_markup: { inline_keyboard: [[{ text: "Відкрити Google відгуки", web_app: { url: `${APP_URL}?tab=google` } }]] },
+  }).catch(console.error);
+  for (const x of await recipients()) {
+    if (x.tg_id === u.tg_id) continue;
+    const { data: ask } = await db.from("bot_announcements").select("info").eq("key", `google-backlog-ask-${x.tg_id}-${day}`).maybeSingle();
+    const m = ask?.info as { chat_id?: number; message_id?: number } | null;
+    const text = `👌 Сьогодні відгуки Google закриває <b>${u.name}</b>. Нагадування сьогодні йдуть їй.`;
+    if (m?.message_id) await tg("editMessageText", { chat_id: m.chat_id, message_id: m.message_id, parse_mode: "HTML", text }).catch(console.error);
+    else await tg("sendMessage", { chat_id: x.tg_id, parse_mode: "HTML", text }).catch(console.error);
+  }
+  await tellOwner(`🙋 Відгуки Google сьогодні закриває ${u.name}.`, u.tg_id);
+}
