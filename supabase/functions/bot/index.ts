@@ -17,7 +17,7 @@ import { FEEDBACK_BTN, FEEDBACK_KB, inviteText, locked, ownerId, setOf, type Sur
 import { connectLink } from "../_shared/googlerev.ts";
 import { onReviewButton, onReviewText } from "../_shared/greplybot.ts";
 import { remindGoogle } from "../_shared/greviews.ts";
-import { ackGoogleIntro, sendGoogleIntro } from "../_shared/gintro.ts";
+import { ackGoogleIntro, sendGoogleHowto, sendGoogleIntro } from "../_shared/gintro.ts";
 
 type Draft = {
   loc: number | null;
@@ -722,6 +722,7 @@ Deno.serve(async (req) => {
         return Response.json({ ...await remindTake(kyivToday(), slot), google, intro });
       }
       if (new URL(req.url).searchParams.has("report")) return Response.json({ ok: true, reported: await morningReport(kyivToday()) });
+      if (new URL(req.url).searchParams.has("google_howto")) return Response.json(await sendGoogleHowto());
       const key = new URL(req.url).searchParams.get("announce");
       if (key) return Response.json(await announce(key));
       return await setup(req);

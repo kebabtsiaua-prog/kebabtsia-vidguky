@@ -1,7 +1,7 @@
 // The new Google reviews format, told to the communication team (owner 2026-11-25): three pictures in the morning of
 // 26.11 with an «Ознайомилася» button. Until a person presses it, the bot asks again at every reminder slot
 // (10:00 with the pictures, 14:00 and 18:00 with the button only).
-import { db, tg, type User } from "./common.ts";
+import { APP_URL, db, tg, type User } from "./common.ts";
 import { recipients } from "./uployal.ts";
 
 const START = "2026-11-26";
@@ -42,4 +42,27 @@ export async function ackGoogleIntro(cb: { id: string }, chat: number, msgId: nu
     text: "✅ <b>Ознайомилася</b> з новим форматом відгуків Google. Дякуємо! Нові відгуки приходитимуть сюди карткою з кнопками.",
   }).catch(console.error);
   if (!error) await tellOwner(`✅ ${u.name} ознайомилася з новим форматом відгуків Google.`, u.tg_id);
+}
+
+// 26.11 (owner «пиши їм»): why the bot had nothing yet, and the week's backlog goes through the app. Once per person.
+export async function sendGoogleHowto() {
+  let sent = 0;
+  for (const u of await recipients()) {
+    const { error: dup } = await db.from("bot_announcements").insert({ key: `google-howto-${u.tg_id}`, info: {} });
+    if (dup) continue;
+    const r = await tg("sendMessage", {
+      chat_id: u.tg_id, parse_mode: "HTML", reply_markup: { inline_keyboard: [[{ text: "Відкрити Google відгуки", web_app: { url: `${APP_URL}?tab=google` } }]] },
+      text: [
+        "Дівчата, побачили, що Аня написала, що немає функції відповідати 🙏 Все працює, просто з учорашнього ранку в Google не було жодного нового відгуку, тож боту ще не було що вам надіслати.",
+        "",
+        "Зате за минулий тиждень є <b>55 відгуків без відповіді</b>. Домовтеся, будь ласка, між собою, хто з вас сьогодні їх закриває, і напишіть у ваш спільний чат.",
+        "",
+        "<b>Як відповідати:</b> апка «Відгуки» → «Google відгуки» → «Без відповіді». Відкриваєте відгук, натискаєте «✨ Варіант відповіді» (або пишете свій текст), потім «Надіслати в Google». Відповідь одразу зʼявиться в Google. Там же позначаєте, чим закінчилось.",
+        "",
+        "Нові відгуки приходять вам обом у бот, на них можна відповідати прямо з бота або з апки 🙌",
+      ].join("\n"),
+    }).catch(console.error);
+    if (r?.ok) sent++;
+  }
+  return { sent };
 }
