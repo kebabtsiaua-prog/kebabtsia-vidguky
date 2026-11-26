@@ -225,6 +225,21 @@ Deno.serve(async (req) => {
     if (params.has("sync")) return json(await sync());
     // ?catchup=<days> (each length once per day, 7 at most): cards for the unanswered reviews that came in before the
     // cards existed (owner 2026-11-26: Аня had nothing to answer from the bot; then «так» to the last week's ~50 too).
+    // ?recall=1: takes back the catch-up cards of 26.11 that nobody answered yet (owner 2026-11-26: not all 55 at once;
+    // the girls first agree who answers today). Deletes the messages in both chats and clears notified_at.
+    if (params.has("recall")) {
+      const { data } = await db.from("google_reviews").select("id,tg_msgs").is("reply", null)
+        .gte("notified_at", "2026-11-26T08:00:00Z").lt("notified_at", "2026-11-26T09:00:00Z");
+      let deleted = 0;
+      for (const r of data ?? []) {
+        for (const m of (r.tg_msgs ?? []) as { chat_id: number; message_id: number }[]) {
+          const res = await tg("deleteMessage", m).catch(() => null);
+          if (res?.ok) deleted++;
+        }
+        await db.from("google_reviews").update({ tg_msgs: [], notified_at: null }).eq("id", r.id);
+      }
+      return json({ ok: true, reviews: data?.length ?? 0, deleted });
+    }
     if (params.has("catchup")) {
       const days = Math.min(7, Math.max(1, Number(params.get("catchup")) || 3));
       const { error: dup } = await db.from("bot_announcements").insert({ key: `google-catchup-${kyivToday()}-${days}`, info: {} });
