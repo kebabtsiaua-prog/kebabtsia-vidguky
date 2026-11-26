@@ -141,7 +141,9 @@ async function syncLocation(token: string, l: Loc, deadline: number) {
       };
       const seen = byName.get(r.name);
       if (seen) {
-        if (!seen.updated_at || Date.parse(seen.updated_at) !== Date.parse(r.updateTime ?? "")) {
+        // A reply written later in Google does not change the review's updateTime, so the reply is compared too.
+        const replyChanged = (seen.reply ?? null) !== row.reply || (row.reply_at && (!seen.reply_at || Date.parse(seen.reply_at) !== Date.parse(row.reply_at)));
+        if (replyChanged || !seen.updated_at || Date.parse(seen.updated_at) !== Date.parse(r.updateTime ?? "")) {
           // A reply typed in Google itself (not from the bot) has no author on our side.
           const fromBot = seen.reply && row.reply === seen.reply;
           await db.from("google_reviews").update({ ...row, replied_by: fromBot ? seen.replied_by : null }).eq("id", seen.id);
