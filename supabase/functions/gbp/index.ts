@@ -223,13 +223,14 @@ Deno.serve(async (req) => {
       return Response.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${q}`, 302);
     }
     if (params.has("sync")) return json(await sync());
-    // ?catchup=1 (once per day): cards for the unanswered reviews of the last 3 days that came in before the cards
-    // existed (owner 2026-11-26: Аня had nothing to answer from the bot on the first morning).
+    // ?catchup=<days> (each length once per day, 7 at most): cards for the unanswered reviews that came in before the
+    // cards existed (owner 2026-11-26: Аня had nothing to answer from the bot; then «так» to the last week's ~50 too).
     if (params.has("catchup")) {
-      const { error: dup } = await db.from("bot_announcements").insert({ key: `google-catchup-${kyivToday()}`, info: {} });
+      const days = Math.min(7, Math.max(1, Number(params.get("catchup")) || 3));
+      const { error: dup } = await db.from("bot_announcements").insert({ key: `google-catchup-${kyivToday()}-${days}`, info: {} });
       if (dup) return json({ ok: true, sent: 0, reason: "already done today" });
       const { data } = await db.from("google_reviews").select("id").is("reply", null).is("notified_at", null)
-        .gt("published_at", new Date(Date.now() - 3 * 86400000).toISOString()).order("published_at", { ascending: true }).limit(10);
+        .gt("published_at", new Date(Date.now() - days * 86400000).toISOString()).order("published_at", { ascending: true }).limit(60);
       let cards = 0;
       for (const r of data ?? []) cards += await notifyReview(r.id);
       return json({ ok: true, reviews: data?.length ?? 0, cards });
