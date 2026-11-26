@@ -162,8 +162,12 @@ export async function aiDraft(r: GRow): Promise<string | null> {
 export async function remindGoogle(today: string, slot: string) {
   const { error: dup } = await db.from("bot_announcements").insert({ key: `google-remind-${today}-${slot}`, info: {} });
   if (dup) return { sent: 0, reason: "already sent this slot" };
-  const { data } = await db.from("google_reviews").select(ROW + ",locations(name)").is("reply", null).not("notified_at", "is", null)
-    .lt("notified_at", new Date(Date.now() - 3600000).toISOString()).order("published_at", { ascending: false }).limit(30);
+  // Unanswered: came to the bot over an hour ago, or the last week's backlog (the same list as «Без відповіді» in the app).
+  const hourAgo = new Date(Date.now() - 3600000).toISOString(), weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
+  const { data } = await db.from("google_reviews").select(ROW + ",locations(name)").is("reply", null)
+    .or(`notified_at.lt."${hourAgo}",and(notified_at.is.null,published_at.gt."${weekAgo}",published_at.lt."${hourAgo}")`)
+    .or('result.is.null,result.neq."Відповідь не потрібна"')
+    .order("published_at", { ascending: false }).limit(100);
   const rows = (data ?? []) as unknown as (GRow & { locations: { name: string } })[];
   if (!rows.length) return { sent: 0, waiting: 0 };
   const ago = (iso: string | null) => {
@@ -175,7 +179,10 @@ export async function remindGoogle(today: string, slot: string) {
   if (rows.length > 15) lines.push(`…і ще ${rows.length - 15}`);
   const kb = rows.slice(0, 8).map((r) => [{ text: `${r.locations.name.replace(/^Львів, /, "")} · ${r.rating ?? "?"}★`, callback_data: `gr:${r.key}:w` }]);
   let sent = 0;
-  for (const u of await recipients()) {
+  // The day someone took the backlog («Я беру сьогодні»), only she gets the reminder.
+  const { data: taken } = await db.from("bot_announcements").select("info").eq("key", `google-backlog-${today}`).maybeSingle();
+  const taker = (taken?.info as { tg_id?: number } | null)?.tg_id;
+  for (const u of (await recipients()).filter((x) => !taker || x.tg_id === taker)) {
     const res = await tg("sendMessage", {
       chat_id: u.tg_id, parse_mode: "HTML", reply_markup: { inline_keyboard: kb },
       text: `⏰ <b>Відгуки Google без відповіді: ${rows.length}</b>\n\n${lines.join("\n")}\n\nНатисніть, щоб відповісти:`,
