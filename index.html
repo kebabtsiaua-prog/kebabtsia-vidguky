@@ -939,10 +939,11 @@ function renderCollab(){
 }
 
 // ================= GOOGLE ВІДГУКИ =================
-// Every Google review of the last 60 days. Лена й Аня answer in the bot; here they see what is left and record the outcome.
+// Every Google review of the last 60 days. Лена й Аня answer here or in the bot, and record the outcome.
 var greviews=null,GSEG="wait";
 var GRESULTS=["Відповіли на відгук","Гість написав, у процесі","Владнано","Відповідь не потрібна"];
-function gWaiting(r){return !r.reply&&r.notified_at}
+// Waiting: no reply yet, and it either came to the bot or is from the last 7 days (the backlog of the first week).
+function gWaiting(r){return !r.reply&&r.result!=="Відповідь не потрібна"&&(r.notified_at||Date.now()-Date.parse(r.published_at)<7*864e5)}
 function gAgo(iso){if(!iso)return "";var h=Math.round((Date.now()-Date.parse(iso))/36e5);return h<1?"щойно":h<24?h+" год тому":Math.round(h/24)+" дн тому"}
 function gRow(r){
   return '<button class="q" data-grev="'+r.key+'"><span class="b"><span class="t1"><b>'+esc(shortLoc(r.loc))+'</b><span style="color:#F5A524;letter-spacing:1px">'+"★".repeat(r.rating||0)+'</span></span>'+
@@ -950,7 +951,7 @@ function gRow(r){
     '<span class="t1" style="margin-top:3px"><span style="margin-left:0">'+esc(r.author||"Гість")+' · '+gAgo(r.published_at)+'</span>'+
     (r.complaint_id?'<span class="chip warn" style="margin-left:auto">Скарга №'+r.complaint_id+'</span>':r.reply?'<span class="chip good" style="margin-left:auto">✓ відповіли</span>':'')+'</span></span></button>'}
 function renderGoogle(){
-  var h=head("Google відгуки","Усі відгуки за 60 днів. Відповідають у боті, тут видно, що лишилось, і чим закінчилось",null,null,true);
+  var h=head("Google відгуки","Усі відгуки за 60 днів. Відповідати можна тут або в боті",null,null,true);
   if(!greviews){api("google_list").then(function(x){greviews=x;if(S.tab==="google"&&!S.loc)render()}).catch(showError);return h+'<div class="card"><div class="empty">Завантаження…</div></div>'}
   var wait=greviews.filter(gWaiting),done=greviews.filter(function(r){return r.reply});
   var list=GSEG==="wait"?wait:GSEG==="done"?done:greviews;
@@ -964,7 +965,10 @@ function openGReview(key){
   var st={result:r.result||(r.reply?GRESULTS[0]:"")};
   var body='<div class="quote">'+(r.text?esc(r.text):'<i class="muted">Без тексту, лише оцінка</i>')+'</div>'+
     '<div class="muted" style="font-size:13px">'+stars(r.rating)+' · '+esc(r.author||"Гість")+' · '+gAgo(r.published_at)+'</div>'+
-    (r.reply?'<div><div class="lbl">Відповідь у Google'+(r.replied_by?' · '+esc(r.replied_by):"")+'</div><div class="quote" style="border-left:3px solid var(--good)">'+esc(r.reply)+'</div></div>':'<div class="muted" style="font-size:13px">Ще без відповіді. Відповісти можна в боті кнопкою «✍️ Відповісти».</div>')+
+    (r.reply?'<div><div class="lbl">Відповідь у Google'+(r.replied_by?' · '+esc(r.replied_by):"")+'</div><div class="quote" style="border-left:3px solid var(--good)">'+esc(r.reply)+'</div><button class="btn2" id="gedit" style="margin-top:8px">✏️ Змінити відповідь</button></div>':"")+
+    '<div id="gans"'+(r.reply?' hidden':"")+'><div class="lbl">'+(r.reply?"Нова відповідь":"Відповідь у Google")+'</div><textarea id="gtext" rows="6" placeholder="Напишіть відповідь гостю або натисніть «Варіант відповіді»"></textarea>'+
+      '<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn2" id="gai">✨ Варіант відповіді</button><span class="sp" style="flex:1"></span><button class="btnk" id="gsend">Надіслати в Google</button></div>'+
+      '<div class="muted" style="font-size:12.5px;margin-top:6px">Відповідь одразу зʼявиться під відгуком у Google від імені Кебабці.</div></div>'+
     (r.complaint_id?'<button class="btn2" data-gitem="'+r.complaint_id+'">Відкрити скаргу №'+r.complaint_id+I("right")+'</button>':"")+
     '<div><div class="lbl">Чим закінчилось</div><button class="btn2 flt wide" id="gres" style="justify-content:space-between;width:100%"><b>'+esc(st.result||"Не вибрано")+'</b>'+I("down")+'</button></div>'+
     '<div><div class="lbl">Нотатка</div><textarea id="gnote" placeholder="Наприклад: гість написав у Direct, дали промокод">'+esc(r.note)+'</textarea></div>';
@@ -972,6 +976,10 @@ function openGReview(key){
     foot:'<span class="sp"></span><button class="btn2" data-close2>Закрити</button><button class="btnk" id="gsave">Зберегти</button>',mount:function(el){
     el.querySelector("[data-close2]").addEventListener("click",closePanel);
     var gi=el.querySelector("[data-gitem]");if(gi)gi.addEventListener("click",function(){var id=+gi.dataset.gitem;closeAll();openItem(id)});
+    var ge=el.querySelector("#gedit");if(ge)ge.addEventListener("click",function(){ge.hidden=true;el.querySelector("#gans").hidden=false;var t=el.querySelector("#gtext");t.value=r.reply;t.focus()});
+    el.querySelector("#gai").addEventListener("click",function(){var btn=this;busy(btn,true);api("google_draft",{key:r.key}).then(function(x){busy(btn,false);el.querySelector("#gtext").value=x.text}).catch(function(e){busy(btn,false);toast(e.message)})});
+    el.querySelector("#gsend").addEventListener("click",function(){var btn=this,text=el.querySelector("#gtext").value.trim();if(!text){toast("Напишіть текст відповіді");return}busy(btn,true);
+      api("google_reply",{key:r.key,text:text}).then(function(x){Object.assign(r,x);closePanel();render();toast("Відповідь надіслано в Google")}).catch(function(e){busy(btn,false);toast(e.message)})});
     el.querySelector("#gres").addEventListener("click",function(){var b=this;pickList("Чим закінчилось",GRESULTS,st.result||null,function(v){st.result=v||"";b.querySelector("b").textContent=v||"Не вибрано"},"Не вибрано")});
     el.querySelector("#gsave").addEventListener("click",function(){var btn=this,note=el.querySelector("#gnote").value.trim();busy(btn,true);
       api("google_save",{key:r.key,result:st.result,note:note}).then(function(x){r.result=x.result;r.note=x.note;closePanel();render();toast("Збережено")}).catch(function(e){busy(btn,false);toast(e.message)})})}});

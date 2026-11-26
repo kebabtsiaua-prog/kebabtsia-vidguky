@@ -8,6 +8,7 @@ import {
   RESULTS, ROLES, savePhotos, telegramUser, tg, TOPICS, type User,
 } from "../_shared/common.ts";
 import { FEEDBACK_KB, followUp, inviteText, locked, MIN, ownerId, SETS, setOf, type SurveyUser } from "../_shared/survey.ts";
+import { aiDraft, loadReview, mayReply, sendReply } from "../_shared/greviews.ts";
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -440,6 +441,23 @@ async function handle(u: User, a: string, p: any): Promise<unknown> {
         .gte("published_at", since).order("published_at", { ascending: false }).limit(500);
       // deno-lint-ignore no-explicit-any
       return (data ?? []).map(({ locations, ...r }: any) => ({ ...r, loc: locations?.name ?? "" }));
+    }
+    // Answer a Google review from the app, the same way as from the bot: an AI draft, then the reply goes to Google.
+    case "google_draft": {
+      const r = await loadReview(Number(p.key));
+      must(r && await mayReply(u), "Немає доступу");
+      const text = await aiDraft(r!);
+      must(text, "Не вийшло скласти варіант, напишіть самі");
+      return { text };
+    }
+    case "google_reply": {
+      const r = await loadReview(Number(p.key));
+      must(r && await mayReply(u), "Немає доступу");
+      const text = String(p.text ?? "").trim().slice(0, 4000);
+      must(text, "Напишіть текст відповіді");
+      await sendReply(r!, text, u);
+      const { data } = await db.from("google_reviews").select("reply,reply_at,replied_by,result").eq("key", r!.key).single();
+      return data;
     }
     case "google_save": {
       must(isStaff(u), "Немає доступу");
